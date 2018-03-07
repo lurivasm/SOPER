@@ -1,10 +1,18 @@
+/**
+*@brief Ejercicio4
+*@author Lucia Rivas Molina
+*@author Daniel Santo-Tomas Lopez  
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
+
 #define NUM_PROC 6
+
 int main (void){
    int pid;
    int i;
-   for (i=0; i <= NUM_PROC; i++){
+   for (i = 0; i <= NUM_PROC; i++){
      if (i % 2 == 0) {
        if ((pid=fork()) <0 ){
            printf("Error al emplear fork\n");
@@ -18,6 +26,5 @@ int main (void){
         }
      }
    }
-
    exit(EXIT_SUCCESS);
 }

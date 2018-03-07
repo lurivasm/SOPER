@@ -1,21 +1,25 @@
+/**
+*@brief Ejercicio6
+*@author Lucia Rivas Molina
+*@author Daniel Santo-Tomas Lopez  
+*/
 #include <stdio.h>
 #include <stdlib.h>
 
 /*El padre no puede acceder al contenido del hijo*/
 /*Al hacerlo fuera queda liberada la memoria*/
+
 int main(void){
+	int n;
   char* s = (char*)malloc(sizeof(char)*81);
   if(!s){
     printf("Error al reservar memoria\n");
     exit(EXIT_FAILURE);
   }
 
-  int n;
-
-
   if(fork()){
     printf("Padre esperando\n\n");
-    wait();
+    wait(NULL);
     printf("Padre imprime: %s\n",s);
     printf("Padre termina\n\n");
   }
