@@ -1,7 +1,9 @@
 /**
 *@brief Ejercicio9
-*@author Lucia Rivas Molina
-*@author Daniel Santo-Tomas Lopez
+*@author Lucia Rivas Molina <lucia.rivasmolina@estudiante.uam.es>
+*@author Daniel Santo-Tomas Lopez <daniel.santo-tomas@estudiante.uam.es>
+*@file ejercicio9.c
+*@date 2018/03/07
 */
 
 #include <stdio.h>
@@ -15,8 +17,6 @@
 
 /**
 *@brief Calcula el factorial del numero pasado como parametro
-*@author Lucia Rivas Molina
-*@author Daniel Santo-Tomas Lopez
 *@param un numero real
 *@return factorial del numero
 */
@@ -28,22 +28,18 @@ double factorial(double a){
 
 /**
 *@brief Calcula el coeficiente binomial de a sobre b
-*@author Lucia Rivas Molina
-*@author Daniel Santo-Tomas Lopez
 *@param numero real a
 *@param numero real b
 *@return a sobre b
 */
 double combinatoria(double a, double b){
-  if (a < b || a < 0 || b < 0 || a == 0 && b != 0) return 0;
+  if (a < b || a < 0 || b < 0 || (a == 0 && b != 0)) return 0;
   if(b == 0) return 1;
   return combinatoria(a-1, b-1) + combinatoria(a-1, b);
 }
 
 /**
 *@brief Calcula la suma de dos valores absolutos
-*@author Lucia Rivas Molina
-*@author Daniel Santo-Tomas Lopez
 *@param primer operando
 *@param segundo operando
 *@return suma de los valores absolutos
@@ -54,15 +50,13 @@ double sumAbs(double a, double b){
 
 
 /**
+*Programa que lanza cuatro hijos y cada uno realiza una operación matemática
 *@brief Funcion main
-*@author Lucia Rivas Molina
-*@author Daniel Santo-Tomas Lopez
 */
 int main(void){
   pid_t childpid[4];                          /*Los pids correspondientes a los hijos*/
   double o1, o2, result;                      /*Operandos para cada fork*/
   char buffer[MAX_TAM], respuesta[MAX_TAM], pid[MAX_TAM]; /*Strings para las tuberías*/
-  char *aux1, *aux2;                          /*Punteros auxiliares para los strtok*/
   int i, status;
   int fdIda[4][2];      /*Tuberías de escritura del padre y lectura de los hijos*/
   int fdVuelta[4][2];      /*Tuberías de escritura de los hijos y lectura del padre*/
