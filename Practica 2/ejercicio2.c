@@ -4,17 +4,23 @@
 #include <signal.h>
 
 
-void main(){
+int main(){
 
   int pid,i;
 
   /*En cada iteracion del bucle se crea un hjo*/
   for(i = 0 ; i < 4 ; i++){
+    /*En caso de error*/
+    if((pid = fork()) < 0){
+      printf("ERROR\n");
+      exit(EXIT_FAILURE);
+    }
     /*Almacenamos el valor del pid del hijo. En este if entra el padre*/
-    if((pid = fork()) != 0){
+    else if(pid > 0){
       usleep(5000000);
       /*Espera 5 segundos y envia la señal al hijo*/
       kill(pid,SIGTERM);
+      wait(NULL);
     }
     /*En el eslse entra el hijo*/
     else{
@@ -25,6 +31,6 @@ void main(){
       exit(EXIT_SUCCESS);
     }
   }
-
+exit(EXIT_SUCCESS);
 
 }

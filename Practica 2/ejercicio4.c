@@ -4,43 +4,54 @@
 #include <signal.h>
 #include <sys/wait.h>
 
+#define TAM 5
 
-void main(){
-int padre, hijo1, hijo2, i, N, status;
+void captura(){
+  return;
+}
 
-hijo1 = fork();
-printf("%d",hijo1);
-while(1){
+int main(){
+int  i, j, status;
+pid_t hijo[5];
 
-  if(hijo1 != 0 ){
-    pause();
-    if(N < 5){
-      if((hijo2 = fork()) == 0){
-        kill(hijo1,SIGUSR1);
-      }
-      waitpid(hijo1, &status, WUNTRACED | WCONTINUED);
-      hijo1 = hijo2;
-      N++;
-    }
+signal(SIGUSR1, captura);
 
-    else{
-      kill(hijo1,SIGUSR1);
-      waitpid(hijo1, &status, WUNTRACED | WCONTINUED);
-      break;
-    }
+for(i = 0; i < TAM; i++){
+  hijo[i] = fork();
+
+  if(hijo[i] < 0){
+    printf("ERROR\n");
+    exit(EXIT_FAILURE);
   }
-  if(hijo1 == 0){
-    for(i = 0 ; i < 10 ; i++){
-      printf("Soy %d y estoy trabajando",getpid());
-      usleep(1000000);
+
+  else if(hijo[i] > 0 ){
+    /*Si estamos en la primera iteración no esperamos a ningún hijo anterior*/
+    if(i != 0){
+      waitpid(hijo[i-1], &status, WUNTRACED | WCONTINUED);
+    }
+    pause();
+    continue;
+  }
+
+  else if(hijo[i] == 0){
+    /*En caso de estar en la primera iteración el hijo no elimina ningún otro proceso hijo*/
+    if(i != 0){
+      kill(hijo[i-1], SIGTERM);
+    }
+    for(j = 0 ; j < 10 ; j++){
+      printf("Soy %d y estoy trabajando\n",getpid());
+      fflush(stdout);
+      sleep(1);
     }
     kill(getppid(),SIGUSR1);
-    while(pause()){
-      printf("Soy %d y estoy trabajando",getpid());
-      usleep(1000000);
+    while(1){
+      printf("Soy %d y estoy trabajando\n",getpid());
+      sleep(1);
     }
     exit(EXIT_SUCCESS);
   }
 }
+  kill(hijo[i], SIGTERM);
+  waitpid(hijo[i], &status, WUNTRACED | WCONTINUED);
   exit(EXIT_SUCCESS);
 }
