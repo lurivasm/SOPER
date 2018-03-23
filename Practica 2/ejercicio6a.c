@@ -26,7 +26,7 @@ int main (void) {
     exit(EXIT_FAILURE);
   }
   else if (pid == 0){
-    alarm(10);
+    alarm(SEC);
     while(1){
       /*Bloqueamos las tres señales*/
       if(sigismember(&set, SIGALRM) == 0 && sigismember(&set, SIGUSR1) == 0){
@@ -34,18 +34,27 @@ int main (void) {
         sigaddset(&set, SIGALRM);
       }
       error = sigprocmask(SIG_BLOCK, &set,&oset);
-      /*if(error){
+      if(error){
         printf("ERROR\n");
         exit(EXIT_FAILURE);
-      }*/
+      }
       for (counter = 0; counter < NUM_PROC; counter++){
         printf("%d\n", counter);
         sleep(1);
       }
       /*Desbloqueamos dos señales*/
+      error = sigprocmask(SIG_UNBLOCK, &set,&oset);
+      if(error){
+        printf("ERROR\n");
+        exit(EXIT_FAILURE);
+      }
       sigdelset(&set, SIGUSR1);
       sigdelset(&set, SIGALRM);
       error = sigprocmask(SIG_BLOCK, &set,&oset);
+      if(error){
+        printf("ERROR\n");
+        exit(EXIT_FAILURE);
+      }
     }
   }
   while(wait(NULL)>0);
