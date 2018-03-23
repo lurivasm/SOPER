@@ -35,4 +35,5 @@ int main (void){
     kill(pid,SIGTERM);
   }
   while(wait(NULL)>0);
+  exit(EXIT_SUCCESS);
 }
