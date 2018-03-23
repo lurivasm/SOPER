@@ -6,7 +6,7 @@ CFLAGS := -Wall -g -pedantic -Wextra
 AUX := -lpthread
 
 #Ficheros a ejecutar
-EXES = ejercicio2 ejercicio4 ejercicio6b
+EXES = ejercicio2 ejercicio4 ejercicio6a
 AUX_OBJ = #En esta práctica no hay librerías auxiliares
 
 #Targets
