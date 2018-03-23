@@ -33,7 +33,7 @@ int main (void) {
         sigaddset(&set, SIGUSR1);
         sigaddset(&set, SIGALRM);
       }
-      error = sigprocmask(SIG_BLOCK, &set,&oset);
+      error = sigprocmask(SIG_SETMASK, &set,&oset);
       if(error){
         printf("ERROR\n");
         exit(EXIT_FAILURE);
@@ -43,14 +43,9 @@ int main (void) {
         sleep(1);
       }
       /*Desbloqueamos dos señales*/
-      error = sigprocmask(SIG_UNBLOCK, &set,&oset);
-      if(error){
-        printf("ERROR\n");
-        exit(EXIT_FAILURE);
-      }
       sigdelset(&set, SIGUSR1);
       sigdelset(&set, SIGALRM);
-      error = sigprocmask(SIG_BLOCK, &set,&oset);
+      error = sigprocmask(SIG_SETMASK, &set,&oset);
       if(error){
         printf("ERROR\n");
         exit(EXIT_FAILURE);
