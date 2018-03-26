@@ -21,12 +21,19 @@ int Inicializar_Semaforo(int semid, unsigned short *array){
     return ERROR;
   }
   int i;
-  for(i = 0; i < sizeof(array)/sizeof(unsigned short); i++){
+  int tam = sizeof(array)/sizeof(unsigned short);
+
+
+  arg.array = (unsigned short*)malloc(sizeof(short)*tam);
+  for(i = 0; i < tam; i++){
     arg.array[i] = array[i];
   }
-  if(semctl (semid, 0, SETALL, arg) < 0){
+  
+
+  if(semctl (semid, tam, SETALL, arg) < 0){
     return ERROR;
   }
+  free(arg.array);
   return OK;
 }
 
@@ -53,13 +60,27 @@ int Borrar_Semaforo(int semid){
 *@return OK / ERROR
 */
 int Crear_Semaforo(key_t key, int size, int *semid){
-
+  int i;
   *semid = semget(key, size, IPC_CREAT | IPC_EXCL | SHM_R | SHM_W);
   if((*semid == -1) && (errno == EEXIST)){
     return 1;
   }
   if(*semid == -1){
     return ERROR;
+  }
+
+  unsigned short *array = (unsigned short*)malloc(sizeof(unsigned short)*size);
+  if(!array){
+    Borrar_Semaforo(*semid);
+    return ERROR;
+  }
+  for(i = 0 ; i  < size ; i++){
+    array[i] = 0;
+  }
+
+  if(Inicializar_Semaforo(*semid, array) == ERROR){
+      Borrar_Semaforo(*semid);
+      return ERROR;
   }
   return 0;
 }

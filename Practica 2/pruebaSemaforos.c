@@ -8,11 +8,13 @@ int main ( )
  */
  int semid; /* ID de la lista de semáforos */
  unsigned short *array;
+
  union semun {
  int val;
  struct semid_ds *semstat;
  unsigned short *array;
  } arg;
+ arg.array = (unsigned short*)malloc(sizeof(short)*NSEMAFOROS);
  /*
  * Creamos una lista o conjunto con dos semáforos
  */
@@ -21,31 +23,37 @@ int main ( )
   printf("ERROR 1\n");
   return -1;
  }
- printf("%d\n",a);
+ 
  /*
  * Inicializamos los semáforos
  */
- array = (unsigned short *)malloc(sizeof(short)*NSEMAFOROS);
+ array = (unsigned short*)malloc(sizeof(short)*NSEMAFOROS);
  array[0] = 1;
  array[1] = 1;
+
+
  if(Inicializar_Semaforo( semid, array) == ERROR){
    Borrar_Semaforo(semid);
    printf("ERROR 2\n");
+
    return -1;
  }
+
  /*
  * Operamos sobre los semáforos
  */
 if(Down_Semaforo(semid, 0, SEM_UNDO ) == ERROR){
-   Borrar_Semaforo(semid);
+  Borrar_Semaforo(semid);
   printf("ERROR 3\n");
   return -1;
 }
+
 if(Up_Semaforo(semid, 1, SEM_UNDO ) == ERROR){
   Borrar_Semaforo(semid);
   printf("ERROR 4\n");
   return -1;
 }
+
  /*
  * Veamos los valores de los semáforos
  */
