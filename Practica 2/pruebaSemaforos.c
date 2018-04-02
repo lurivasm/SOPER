@@ -1,29 +1,29 @@
 #include "semaforos.h"
 #define SEMKEY 75798
 #define NSEMAFOROS 2
+
 int main ( )
 {
- /*
- * Declaración de variables
- */
+ /*Declaración de variables*/
  int semid; /* ID de la lista de semáforos */
  unsigned short *array;
 
  union semun {
- int val;
- struct semid_ds *semstat;
- unsigned short *array;
+   int val;
+   struct semid_ds *semstat;
+   unsigned short *array;
  } arg;
+
+
  arg.array = (unsigned short*)malloc(sizeof(short)*NSEMAFOROS);
- /*
- * Creamos una lista o conjunto con dos semáforos
- */
+
+ /*Creamos una lista o conjunto con dos semáforos*/
  int a;
  if((a = Crear_Semaforo(SEMKEY, NSEMAFOROS, &semid)) == ERROR){
   printf("ERROR 1\n");
   return -1;
  }
- 
+
  /*
  * Inicializamos los semáforos
  */

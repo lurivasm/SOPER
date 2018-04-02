@@ -1,3 +1,11 @@
+/**
+*@brief Ejercicio6b
+*@author Lucia Rivas Molina
+*@author Daniel Santo-Tomas Lopez
+*@date 31/03/2018
+*@file ejercicio6b.c
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>

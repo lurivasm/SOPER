@@ -2,11 +2,11 @@
 .PHONY: all clean
 
 CC := gcc
-CFLAGS := -Wall -g 
+CFLAGS := -Wall -g
 AUX := -lpthread
 
 #Ficheros a ejecutar
-EXES = ejercicio2 ejercicio4 ejercicio6a ejercicio6b pruebaSemaforos
+EXES = ejercicio2 ejercicio3 ejercicio4 ejercicio6a ejercicio6b pruebaSemaforos ejercicio9
 AUX_OBJ = semaforos.o
 
 #Targets
