@@ -15,7 +15,7 @@
 
 int main(){
 
-  int pid,i;
+  int pid, i;
 
   /*En cada iteracion del bucle se crea un hjo*/
   for(i = 0 ; i < 4 ; i++){
@@ -28,10 +28,11 @@ int main(){
     else if(pid > 0){
       usleep(5000000);
       /*Espera 5 segundos y envia la señal al hijo*/
-      kill(pid,SIGTERM);
+      kill(pid, SIGTERM);
       wait(NULL);
     }
-    /*En el eslse entra el hijo*/
+
+    /*En el else entra el hijo*/
     else{
       /*Imprime el mensaje, espera 30 segundos, imprime el segundo mensaje y termina*/
       printf("Soy el proceso hijo %d \n",getpid());
@@ -40,6 +41,7 @@ int main(){
       exit(EXIT_SUCCESS);
     }
   }
+
 exit(EXIT_SUCCESS);
 
 }
