@@ -52,7 +52,7 @@ int main (void) {
       /*Bloqueamos las tres señales*/
       /*Si SIGALRM y SIGUSR1 no pertenecen a la mascara las agregamos*/
       if(sigismember(&set, SIGALRM) == 0 && sigismember(&set, SIGUSR1) == 0){
-        if(sigaddset(&set, SIGUSR1) == -1 || sigaddset(&set, SIGALRM){
+        if(sigaddset(&set, SIGUSR1) == -1 || sigaddset(&set, SIGALRM)){
           printf("ERROR\n");
           exit(EXIT_FAILURE);
         }

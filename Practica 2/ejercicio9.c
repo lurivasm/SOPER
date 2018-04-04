@@ -15,7 +15,7 @@
 /**
 *@brief numero de cajas del supermercado
 */
-#define CAJAS 2
+#define CAJAS 4
 /**
 *@brief numero de semaforos necesarios
 *Necesitamos un semaforo para el archivo de cada
@@ -87,7 +87,7 @@ int main(void) {
   int dinero = 0, total = 0, aleat, semid, status, i, j, cont = 0, sennal, hijo;
   char clientesCaja[CAJAS][50]; /*Nombres de los ficheros donde se almacena el pago de clientes*/
   char cajaTotal[CAJAS][50];    /*Nombres de los ficheros donde se almacena el total de la caja*/
-  char info[10] = "info.txt";   /*Fichero donde se almacena la informacion que envia la caja*/
+  char info[9] = "info.txt";    /*Fichero donde se almacena la informacion que envia la caja*/
   unsigned short *sem;
   FILE *caja[CAJAS], *clientes[CAJAS];
   FILE *fich;
@@ -154,7 +154,7 @@ int main(void) {
   }
 
   printf("Abriendo tienda...\n");
-  printf("Hay %d cajas operativas\n", CAJAS);
+  printf("Hay %d cajas operativas\nEsperando respuesta...\n\n", CAJAS);
 
   /*El proceso padre genera las cajas hijas y cada una realiza su operación*/
   for(i = 0; i < CAJAS; i++){
@@ -173,29 +173,41 @@ int main(void) {
       /*Una vez estás todas las cajas realiza un pause()*/
       while(cont < CAJAS){
         pause();
+        /*Lee de info.txt que señal recibe y que hijo la manda*/
         fich = fopen(info, "r");
         fscanf(fich, "%d %d", &sennal, &hijo);
         fclose(fich);
         switch (sennal) {
           /*En caso de que sea SIGUSR1 restamos 900 euros al dinero*/
           case SIGUSR1:
-            printf("CAJA %d : supervisor retirando 900 euros\n", hijo+1);
+            printf("CAJA %d : supervisor retirando 900 euros\n\n", hijo+1);
             Down_Semaforo(semid, hijo, SEM_UNDO);
-            /*leer(cajaTotal[hijo]);*/
-            caja[hijo] = fopen(cajaTotal[hijo], "r");
-            fscanf(caja[hijo], "%d\n", &dinero);
-            fclose(caja[hijo]);
+            /*Lee el total de la caja del hijo*/
+            dinero = leer(cajaTotal[hijo]);
+            if(total == ERROR){
+              perror("Error en la lectura de ficheros");
+              Borrar_Semaforo(semid);
+              free(sem);
+              exit(EXIT_FAILURE);
+            }
+            /*Le resta 900 euros al dinero de la caja del hijo y los suma al total*/
             dinero -= 900;
             total += 900;
-            caja[hijo] = fopen(cajaTotal[hijo], "w");
-            fprintf(caja[hijo], "%d\n", dinero);
-            fclose(caja[hijo]);
-            Up_Semaforo(semid, hijo, SEM_UNDO);
+            /*Volver a escribir el dinero en cajaTotal.txt*/
+            if(escribir(cajaTotal[hijo], dinero) == ERROR){
+              perror("Error en la escritura de ficheros");
+              Borrar_Semaforo(semid);
+              free(sem);
+              exit(EXIT_FAILURE);
+            }
+            /*Up del semaforo del hijo y del de info.txt para que otro hijo le avise*/
             Up_Semaforo(semid, CAJAS, SEM_UNDO);
+            Up_Semaforo(semid, hijo, SEM_UNDO);
+
             break;
           /*En caso de que sea SIGUSR2 sacamos todo el dinero del fichero*/
           case SIGUSR2:
-            printf("Caja %d : supervisor retirando dinero\n", hijo+1);
+            printf("CAJA %d : supervisor retirando dinero\n\n", hijo+1);
             Down_Semaforo(semid, hijo, SEM_UNDO);
             caja[hijo] = fopen(cajaTotal[hijo], "r");
             fscanf(caja[hijo], "%d\n", &dinero);
@@ -219,53 +231,51 @@ int main(void) {
       clientes[i] = fopen(clientesCaja[i], "r");
 
       while(!feof(clientes[i])){
+        printf("\t Operando caja %d\n", i+1);
         Down_Semaforo(semid, i, SEM_UNDO);
-        /*Cobra al cliente y lo suma al total*/
-        /*total = leer(cajaTotal[i]);
+        /*Cobra al cliente leyendo de clientesTotal.txt y lo suma al total*/
+        fscanf(clientes[i], "%d\n", &dinero);
+        total = leer(cajaTotal[i]);
         if(total == ERROR){
           perror("Error en la lectura de ficheros");
           Borrar_Semaforo(semid);
           free(sem);
           exit(EXIT_FAILURE);
-        }*/
-        caja[i] = fopen(cajaTotal[i], "r");
-        fscanf(caja[i], "%d\n", &total);
-        fscanf(clientes[i], "%d\n", &dinero);
-        fclose(caja[i]);
+        }
         total += dinero;
+
+        /*Volver a escribit el total en cajaTotal.txt*/
+        if(escribir(cajaTotal[i], total) == ERROR){
+          perror("Error en la escritura de ficheros");
+          Borrar_Semaforo(semid);
+          free(sem);
+          exit(EXIT_FAILURE);
+        }
+
         /*Si el total de dinero supera los 1000 mandamos una señal al padre*/
         if (1000 <= total){
           Down_Semaforo(semid, CAJAS, SEM_UNDO);
-          printf("Caja %d ", i);
           fich = fopen(info, "w");
           fprintf(fich, "%d %d\n", SIGUSR1, i);
           fclose(fich);
           kill(getppid(), SIGUSR1);
         }
-        /*if(escribir(cajaTotal[i], total) == ERROR){
-          perror("Error en la escritura de ficheros");
-          Borrar_Semaforo(semid);
-          free(sem);
-          exit(EXIT_FAILURE);
-        }*/
-        caja[i] = fopen(cajaTotal[i], "w");
-        fprintf(caja[i], "%d\n", total);
-        fclose(caja[i]);
+        /*Up del semaforo de cajaTotal.txt para el padre*/
         Up_Semaforo(semid, i, SEM_UNDO);
         sleep(SECS);
       }
-      /*Cerramos el fichero y avisamos al padre de que hemos terminado*/
+
+      /*Cerramos el fichero de clientes y avisamos al padre de que hemos terminado*/
       fclose(clientes[i]);
       Down_Semaforo(semid, CAJAS, SEM_UNDO);
+      /*Escribimos en info.txt la señal y el hijo*/
       fich = fopen(info, "w");
       fprintf(fich, "%d %d\n", SIGUSR2, i);
       fclose(fich);
-      printf("Caja %d ", i);
       kill(getppid(), SIGUSR2);
       exit(EXIT_SUCCESS);
     }
   }
-
 
   /*Borramos los semaforos y liberamos memoria*/
   Borrar_Semaforo(semid);
