@@ -236,7 +236,7 @@ int main(void) {
         /*Si el total de dinero supera los 1000 mandamos una señal al padre*/
         if (1000 <= total){
           Down_Semaforo(semid, CAJAS, SEM_UNDO);
-          printf
+          printf("Caja %d ", i);
           fich = fopen(info, "w");
           fprintf(fich, "%d %d\n", SIGUSR1, i);
           fclose(fich);
@@ -260,6 +260,7 @@ int main(void) {
       fich = fopen(info, "w");
       fprintf(fich, "%d %d\n", SIGUSR2, i);
       fclose(fich);
+      printf("Caja %d ", i);
       kill(getppid(), SIGUSR2);
       exit(EXIT_SUCCESS);
     }

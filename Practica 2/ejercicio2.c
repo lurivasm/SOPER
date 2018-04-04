@@ -26,7 +26,7 @@ int main(){
     }
     /*Almacenamos el valor del pid del hijo. En este if entra el padre*/
     else if(pid > 0){
-      usleep(5000000);
+      sleep(5);
       /*Espera 5 segundos y envia la señal al hijo*/
       kill(pid, SIGTERM);
       wait(NULL);
@@ -36,7 +36,7 @@ int main(){
     else{
       /*Imprime el mensaje, espera 30 segundos, imprime el segundo mensaje y termina*/
       printf("Soy el proceso hijo %d \n",getpid());
-      usleep(30000000);
+      sleep(30);
       printf("Soy el proceso hijo %d y ya me toca terminar",getpid());
       exit(EXIT_SUCCESS);
     }

@@ -3,7 +3,7 @@
 *@author Lucia Rivas Molina
 *@author Daniel Santo-Tomas Lopez
 *@date 31/03/2018
-*@file ejercicio6a.c  
+*@file ejercicio6a.c
 */
 
 #include <stdio.h>
@@ -52,23 +52,31 @@ int main (void) {
       /*Bloqueamos las tres señales*/
       /*Si SIGALRM y SIGUSR1 no pertenecen a la mascara las agregamos*/
       if(sigismember(&set, SIGALRM) == 0 && sigismember(&set, SIGUSR1) == 0){
-        sigaddset(&set, SIGUSR1);
-        sigaddset(&set, SIGALRM);
+        if(sigaddset(&set, SIGUSR1) == -1 || sigaddset(&set, SIGALRM){
+          printf("ERROR\n");
+          exit(EXIT_FAILURE);
+        }
       }
+
       /*Hacemos un set a la mascara para aplicar las funciones añadidas*/
       error = sigprocmask(SIG_SETMASK, &set,&oset);
       if(error){
         printf("ERROR\n");
         exit(EXIT_FAILURE);
       }
+
       /*Realizamos la cuenta*/
       for (counter = 0; counter < NUM_PROC; counter++){
         printf("%d\n", counter);
         sleep(1);
       }
+
       /*Desbloqueamos dos señales*/
-      sigdelset(&set, SIGUSR1);
-      sigdelset(&set, SIGALRM);
+      if(sigdelset(&set, SIGUSR1) == -1 || sigdelset(&set, SIGALRM) == -1){
+        printf("ERROR\n");
+        exit(EXIT_FAILURE);
+      }
+      /*Aplicamos la mascara para eliminar y desbloquear las señales*/
       error = sigprocmask(SIG_SETMASK, &set,&oset);
       if(error){
         printf("ERROR\n");
