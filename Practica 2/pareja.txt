@@ -1,6 +1,0 @@
-Lucia Rivas Molina        <lucia.rivasmolina@estudiante.uam.es>
-Daniel Santo-Tomás López  <daniel.santo-tomas@estudiante.uam.es>
-
-Fecha 01/04/2018
-Grupo 2201 Pareja 7
-Práctica 2 Sistemas Operativos
