@@ -31,17 +31,29 @@ int main (void) {
   sigset_t set, oset;
 
   /*Metemos las señales en el set para bloquearlas ya que el hijo las hereda*/
-  sigemptyset(&set);
-  sigaddset(&set, SIGUSR1);
-  sigaddset(&set, SIGUSR2);
-  sigaddset(&set, SIGALRM);
+  if(sigemptyset(&set) == -1){
+    perror("ERROR");
+    exit(EXIT_FAILURE);
+  }
+  if(sigaddset(&set, SIGUSR1) == -1){
+    perror("ERROR");
+    exit(EXIT_FAILURE);
+  }
+  if(sigaddset(&set, SIGUSR2) == -1){
+    perror("ERROR");
+    exit(EXIT_FAILURE);
+  }
+  if(sigaddset(&set, SIGALRM) == -1){
+    perror("ERROR");
+    exit(EXIT_FAILURE);
+  }
 
   /*Realizamos el fork*/
   pid = fork();
 
   /*En caso de error*/
   if(pid < 0){
-    printf("ERROR\n");
+    perror("ERROR");
     exit(EXIT_FAILURE);
   }
 
@@ -53,7 +65,7 @@ int main (void) {
       /*Si SIGALRM y SIGUSR1 no pertenecen a la mascara las agregamos*/
       if(sigismember(&set, SIGALRM) == 0 && sigismember(&set, SIGUSR1) == 0){
         if(sigaddset(&set, SIGUSR1) == -1 || sigaddset(&set, SIGALRM)){
-          printf("ERROR\n");
+          perror("ERROR");
           exit(EXIT_FAILURE);
         }
       }
@@ -61,7 +73,7 @@ int main (void) {
       /*Hacemos un set a la mascara para aplicar las funciones añadidas*/
       error = sigprocmask(SIG_SETMASK, &set,&oset);
       if(error){
-        printf("ERROR\n");
+        perror("ERROR");
         exit(EXIT_FAILURE);
       }
 
@@ -73,13 +85,13 @@ int main (void) {
 
       /*Desbloqueamos dos señales*/
       if(sigdelset(&set, SIGUSR1) == -1 || sigdelset(&set, SIGALRM) == -1){
-        printf("ERROR\n");
+        perror("ERROR");
         exit(EXIT_FAILURE);
       }
       /*Aplicamos la mascara para eliminar y desbloquear las señales*/
       error = sigprocmask(SIG_SETMASK, &set,&oset);
       if(error){
-        printf("ERROR\n");
+        perror("ERROR");
         exit(EXIT_FAILURE);
       }
     }
