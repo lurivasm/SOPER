@@ -20,3 +20,4 @@ semaforos.o : semaforos.c semaforos.h
 
 clean :
 	rm -rfv *.o core $(EXES)
+	rm *.txt

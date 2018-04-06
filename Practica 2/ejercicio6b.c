@@ -17,6 +17,10 @@
 *@brief Contador del hijo
 */
 #define NUM_PROC 5
+/**
+*@brief Segundos que espera a la alarma
+*/
+#define SEC 40
 
 /**
 *@brief Funcion captura de la señal
@@ -30,7 +34,7 @@ void captura(int sennal);
 */
 int main (void){
   int pid, counter;
-  
+
   /*Capturamos la señal*/
   if (signal(SIGTERM, captura) == SIG_ERR){
     puts("Error en la captura");
@@ -53,10 +57,10 @@ int main (void){
       sleep(3);
     }
   }
-  
+
   /*En el padre esperamos 40 segundos y mandamos una señal al hijo*/
   else{
-    sleep(40);
+    sleep(SEC);
     kill(pid,SIGTERM);
   }
 

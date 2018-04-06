@@ -12,13 +12,20 @@
 #include <signal.h>
 #include <sys/wait.h>
 
-
+/**
+*@brief numero de HIJOS
+*/
+#define HIJOS 4
+/**
+*@brief Main del ejercicio 2
+*@return EXIT_FAILURE o EXIT_SUCCESS
+*/
 int main(){
 
   int pid, i;
 
   /*En cada iteracion del bucle se crea un hjo*/
-  for(i = 0 ; i < 4 ; i++){
+  for(i = 0 ; i < HIJOS; i++){
     /*En caso de error*/
     if((pid = fork()) < 0){
       printf("ERROR\n");

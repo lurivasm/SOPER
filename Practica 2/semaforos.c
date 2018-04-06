@@ -1,12 +1,13 @@
+/**
+* Biblioteca de semaforos para las prácticas de SOPER
+* @brief Biblioteca de semaforos
+* @file semaforos.c
+* @author Lucia Rivas Molina <lucia.rivasmolina@estudiante.uam.es>
+* @author Daniel Santo-Tomas Lopez <daniel.santo-tomas@estudiante.uam.es>
+* @date 20/03/2018
+*/
 
 #include "semaforos.h"
-
-
-  union semun {
-   int val;
-   struct semid_ds *semstat;
-   unsigned short *array;
-   } arg;
 
 
 
@@ -17,23 +18,23 @@
 *@return OK / ERROR
 */
 int Inicializar_Semaforo(int semid, unsigned short *array){
+  /*Control de errores*/
   if(semid < 0 || !array){
     return ERROR;
   }
-  int i;
-  int tam = sizeof(array)/sizeof(unsigned short);
 
+  /*Creamos una union semun*/
+  union semun {
+   int val;
+   struct semid_ds *semstat;
+   unsigned short *array;
+   } arg;
 
-  arg.array = (unsigned short*)malloc(sizeof(short)*tam);
-  for(i = 0; i < tam; i++){
-    arg.array[i] = array[i];
-  }
-  
+  arg.array = array;
 
-  if(semctl (semid, tam, SETALL, arg) < 0){
+  if(semctl (semid, 0, SETALL, arg) < 0){
     return ERROR;
   }
-  free(arg.array);
   return OK;
 }
 
@@ -60,29 +61,21 @@ int Borrar_Semaforo(int semid){
 *@return OK / ERROR
 */
 int Crear_Semaforo(key_t key, int size, int *semid){
-  int i;
+  /*Control de errores*/
+  if(!semid || size < 1){
+    return ERROR;
+  }
   *semid = semget(key, size, IPC_CREAT | IPC_EXCL | SHM_R | SHM_W);
-  if((*semid == -1) && (errno == EEXIST)){
+  /*Si el semaforo ya existe*/
+  if((*semid == ERROR) && (errno == EEXIST)){
+    /*Quitamos los flags*/
+    *semid = semget(key, size, SHM_R | SHM_W);
     return 1;
   }
   if(*semid == -1){
     return ERROR;
   }
-
-  unsigned short *array = (unsigned short*)malloc(sizeof(unsigned short)*size);
-  if(!array){
-    Borrar_Semaforo(*semid);
-    return ERROR;
-  }
-  for(i = 0 ; i  < size ; i++){
-    array[i] = 0;
-  }
-
-  if(Inicializar_Semaforo(*semid, array) == ERROR){
-      Borrar_Semaforo(*semid);
-      return ERROR;
-  }
-  return 0;
+  return OK;
 }
 
 /**
@@ -93,6 +86,8 @@ int Crear_Semaforo(key_t key, int size, int *semid){
 *@return OK / ERROR
 */
 int Down_Semaforo(int id, int num_sem, int undo){
+  int ret;
+  /*Control de errores*/
   if(id < 0 || num_sem < 0 || undo < 0){
     return ERROR;
   }
@@ -100,9 +95,11 @@ int Down_Semaforo(int id, int num_sem, int undo){
   sem_oper.sem_num = num_sem;
   sem_oper.sem_op =-1;
   sem_oper.sem_flg = undo;
-  if(semop (id, &sem_oper, 1) < 0){
-    return ERROR;
-  }
+  do {
+    errno = 0;
+    ret = semop (id, &sem_oper, 1);
+  } while(ret == -1 && errno == EINTR);
+  if(ret == -1) return ERROR;
   return OK;
 }
 
@@ -115,7 +112,7 @@ int Down_Semaforo(int id, int num_sem, int undo){
 *@return OK / ERROR
 */
 int DownMultiple_Semaforo(int id,int size,int undo,int *active){
-  if(id < 0 || size < 0 || undo < 0 || !active){
+  if(id < 0 || size < 0 || !active){
     return ERROR;
   }
   int i;
@@ -140,6 +137,7 @@ int DownMultiple_Semaforo(int id,int size,int undo,int *active){
 *@return OK / ERROR
 */
 int Up_Semaforo(int id, int num_sem, int undo){
+  int ret;
   if(id < 0 || num_sem < 0 || undo < 0){
     return ERROR;
   }
@@ -147,9 +145,11 @@ int Up_Semaforo(int id, int num_sem, int undo){
   sem_oper.sem_num = num_sem;
   sem_oper.sem_op = 1;
   sem_oper.sem_flg = undo;
-  if(semop (id, &sem_oper, 1) < 0){
-    return ERROR;
-  }
+  do {
+    errno = 0;
+    ret = semop (id, &sem_oper, 1);
+  } while(ret == -1 && errno == EINTR);
+  if(ret == -1) return ERROR;
   return OK;
 }
 

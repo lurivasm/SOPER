@@ -12,6 +12,9 @@
 #include <signal.h>
 #include <sys/wait.h>
 
+/**
+*@brief Numero de hijos a crear
+*/
 #define TAM 5
 
 /**
