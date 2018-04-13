@@ -3,10 +3,10 @@
 
 CC := gcc
 CFLAGS := -Wall -g
-AUX :=
+AUX := -lpthread
 
 #Ficheros a ejecutar
-EXES = ejercicio2 ejercicio2_solved ejercicio3
+EXES = ejercicio2 ejercicio2_solved ejercicio3 ejercicio4
 AUX_OBJ = semaforos.o
 
 #Targets
@@ -20,3 +20,4 @@ semaforos.o : semaforos.c semaforos.h
 
 clean :
 	rm -rfv *.o core $(EXES)
+	rm *.txt

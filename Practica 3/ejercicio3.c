@@ -109,6 +109,7 @@ int main(void){
       free(sem);
       exit(EXIT_FAILURE);
     }
+    free(sem);
     exit(EXIT_SUCCESS);
   }
 
@@ -138,7 +139,7 @@ int productor(int semid, Data *buffer){
 
 int consumidor(int semid, Data *buffer){
   if(!buffer) return ERROR;
-  int i;
+  int i = 0;
 
   while(i < TAM-1){
     if(Down_Semaforo(semid, 1, SEM_UNDO) == ERROR) return ERROR;

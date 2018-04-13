@@ -147,6 +147,7 @@ int main(void){
             free(sem);
             exit(EXIT_FAILURE);
           }
+          free(sem);
           printf("Proceso %d acabado\n", i);
           exit(EXIT_SUCCESS);
         }
