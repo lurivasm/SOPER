@@ -6,7 +6,7 @@ CFLAGS := -Wall -g
 AUX := -lpthread
 
 #Ficheros a ejecutar
-EXES = ejercicio2 ejercicio2_solved ejercicio3 ejercicio4
+EXES = ejercicio2 ejercicio2_solved ejercicio3 ejercicio4 ejercicio5
 AUX_OBJ = semaforos.o
 
 #Targets

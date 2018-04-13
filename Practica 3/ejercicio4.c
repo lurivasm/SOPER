@@ -4,7 +4,7 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
+#include <unistd.h>
 #include <sys/types.h>
 #include <pthread.h>
 #include <time.h>
@@ -47,17 +47,19 @@ void *hilo1(void *arg){
 
   /*Establecemos la longitud y escribimos en el fichero*/
   len = aleat_num(MID, SUP);
-  for(i = 0; i < len; i++){
+  for(i = 0; i < len-1; i++){
     num = aleat_num(INF, MID);
     fprintf(fich, "%d,", num);
   }
+  num = aleat_num(INF, MID);
+  fprintf(fich, "%d", num);
   /*Cerramos el fichero y salimos*/
   fclose(fich);
   pthread_exit(NULL);
 }
 
 void *hilo2(void *arg){
-  int fich, size, i;
+  int fich, size, i, res;
   char *buffer;
   struct stat stat_buff;
 
@@ -79,7 +81,7 @@ void *hilo2(void *arg){
   size = stat_buff.st_size;
 
   /*Mapeamos*/
-  buffer = mmap(0, size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fich, 0);
+  buffer = mmap(0, size, PROT_READ | PROT_WRITE, MAP_SHARED, fich, 0);
   if(buffer == MAP_FAILED){
     perror("Error en mmap");
     pthread_exit(NULL);
@@ -90,8 +92,9 @@ void *hilo2(void *arg){
     printf("%c", buffer[i]);
   }
 
+  res = munmap(0, size);
   /*Liberamos y cerramos*/
-  if(munmap(0, size) < 0){
+  if(res == -1){
     perror("Error munmap");
   }
   close(fich);
