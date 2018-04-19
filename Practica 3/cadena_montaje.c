@@ -37,14 +37,8 @@
 typedef struct {
   long mtype;
   int acabado;
-  char info[16];
+  char mtext[16];
 } Mensaje;
-/**
-*@brief Funcion que solo cambia las letras por su siguiente
-*@param cadena : string a modificar
-*@return la cadena modificada o ERROR en caso de ERROR
-*/
-char *cambiar(char *cadena);
 /**
 * El proceso A lee el fichero y manda de 16b en 16 b mensajes a B
 *@brief Funcion que realiza las acciones del proceso A
@@ -157,18 +151,18 @@ int procesoA(int id_cola, char* entrada){
   fich = fopen(entrada, "r");
   if(!fich) return ERROR;
   /*Leemos el fichero hasta un \n*/
-  fgets(mensaje.info, 16, fich);
+  fgets(mensaje.mtext, 16, fich);
   while(!feof(fich)){
-    if(msgsnd(id_cola, (struct msgbuf *)&mensaje, sizeof(Mensaje) - sizeof(long), 0) < 0){
+    if(msgsnd(id_cola, (struct msgbuf *)&mensaje, sizeof(Mensaje) - sizeof(long) - sizeof(int), 0) < 0){
       fclose(fich);
       return ERROR;
     }
-    fgets(mensaje.info, 16, fich);
+    fgets(mensaje.mtext, 16, fich);
   }
   /*Cerramos, cambiamos acabado a 1 para indicar que A termina y enviamos el mensaje final*/
   fclose(fich);
   mensaje.acabado = 1;
-  if(msgsnd(id_cola, (struct msgbuf *)&mensaje, sizeof(Mensaje) - sizeof(long), 0) < 0){
+  if(msgsnd(id_cola, (struct msgbuf *)&mensaje, sizeof(Mensaje) - sizeof(long) - sizeof(int), 0) < 0){
     fclose(fich);
     return ERROR;
   }
@@ -179,30 +173,32 @@ int procesoA(int id_cola, char* entrada){
 /*Funcion correspondiente al proceso B*/
 int procesoB(int id_cola){
   Mensaje mensaje;
-  int rcv, acabado = 0;
-  char *aux;
+  int rcv, acabado = 0, i;
 
   /*Recibimos el primer mensaje y comprobamos el tamaño y si hay errores*/
-  rcv = msgrcv(id_cola, (struct msgbuf *)&mensaje, sizeof(Mensaje) - sizeof(long), 1, MSG_NOERROR);
+  rcv = msgrcv(id_cola, (struct msgbuf *)&mensaje, sizeof(Mensaje) - sizeof(long) - sizeof(int), 1, MSG_NOERROR);
   if(rcv < 0) return ERROR;
 
   while(acabado == 0){
     /*Cambiamos el mensaje a tipo 2 para que lo reciba C*/
     mensaje.mtype = 2;
     /*Cambiamos el mensaje y lo enviamos*/
-    aux = cambiar(mensaje.info);
-    if(!aux) return ERROR;
-    strcpy(mensaje.info, aux);
-    if(msgsnd(id_cola, (struct msgbuf *)&mensaje, sizeof(Mensaje) - sizeof(long), 0) < 0) return ERROR;
+    for(i = 0; i < 16; i++){
+      if('a'<= mensaje.mtext[i] && mensaje.mtext[i] < 'z') mensaje.mtext[i]++;
+      else if('A'<= mensaje.mtext[i] && mensaje.mtext[i] < 'Z') mensaje.mtext[i]++;
+      else if(mensaje.mtext[i] == 'z') mensaje.mtext[i] = 'a';
+      else if(mensaje.mtext[i] == 'Z') mensaje.mtext[i] = 'A';
+    }
+    if(msgsnd(id_cola, (struct msgbuf *)&mensaje, sizeof(Mensaje) - sizeof(long) - sizeof(int), 0) < 0) return ERROR;
 
     /*Recibimos el mensaje y comprobamos el tamaño y si hay errores*/
-    rcv = msgrcv(id_cola, (struct msgbuf *)&mensaje, sizeof(Mensaje) - sizeof(long), 1, MSG_NOERROR);
+    rcv = msgrcv(id_cola, (struct msgbuf *)&mensaje, sizeof(Mensaje) - sizeof(long) - sizeof(int), 1, MSG_NOERROR);
     if(rcv < 0) return ERROR;
     acabado = mensaje.acabado;
   }
   /*Mandamos el mensaje final y salimos*/
   mensaje.mtype = 2;
-  if(msgsnd(id_cola, (struct msgbuf *)&mensaje, sizeof(Mensaje) - sizeof(long), 0) < 0) return ERROR;
+  if(msgsnd(id_cola, (struct msgbuf *)&mensaje, sizeof(Mensaje) - sizeof(long) - sizeof(int), 0) < 0) return ERROR;
   printf("Proceso B acabado\n");
   return OK;
 }
@@ -219,15 +215,15 @@ int procesoC(int id_cola, char* salida){
   if(!fich) return ERROR;
 
   /*Recibimos el mensaje de tipo 2 y comprobamos el tamaño y si hay errores*/
-  rcv = msgrcv(id_cola, (struct msgbuf *)&mensaje, sizeof(Mensaje) - sizeof(long), 2, MSG_NOERROR);
+  rcv = msgrcv(id_cola, (struct msgbuf *)&mensaje, sizeof(Mensaje) - sizeof(long) - sizeof(int), 2, MSG_NOERROR);
   if(rcv < 0) return ERROR;
   acabado = mensaje.acabado;
   /*Mientras que el proceso B no haya terminado C no termina*/
   while(acabado == 0){
     /*Escribimos el mensaje en el fichero salida*/
-    fprintf(fich, "%s", mensaje.info);
+    fprintf(fich, "%s", mensaje.mtext);
     /*Recibimos el mensaje de tipo 2 y comprobamos el tamaño y si hay errores*/
-    rcv = msgrcv(id_cola, (struct msgbuf *)&mensaje, sizeof(Mensaje) - sizeof(long), 2, MSG_NOERROR);
+    rcv = msgrcv(id_cola, (struct msgbuf *)&mensaje, sizeof(Mensaje) - sizeof(long) - sizeof(int), 2, MSG_NOERROR);
     if(rcv < 0) return ERROR;
     acabado = mensaje.acabado;
   }
@@ -235,17 +231,4 @@ int procesoC(int id_cola, char* salida){
   fclose(fich);
   printf("Proceso C acabado\n");
   return OK;
-}
-
-/*Funcion que cambia las letras del abecedario por su siguiente*/
-char *cambiar(char *cadena){
-  int i;
-  if(!cadena) return NULL;
-  for(i = 0; i < 16; i++){
-    if('a'<= cadena[i] && cadena[i] < 'z') cadena[i]++;
-    else if('A'<= cadena[i] && cadena[i] < 'Z') cadena[i]++;
-    else if(cadena[i] == 'z') cadena[i] = 'a';
-    else if(cadena[i] == 'Z') cadena[i] = 'A';
-  }
-  return cadena;
 }
