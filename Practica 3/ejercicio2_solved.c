@@ -92,7 +92,7 @@ int main(void){
         perror("Error de clave");
         exit(EXIT_FAILURE);
     }
-    id = shmget(key, sizeof(int), IPC_CREAT | IPC_EXCL | SHM_R | SHM_W);
+    id = shmget(key, sizeof(info), IPC_CREAT | IPC_EXCL | SHM_R | SHM_W);
     if(id == -1){
         perror("Error en shmget");
         exit(EXIT_FAILURE);
