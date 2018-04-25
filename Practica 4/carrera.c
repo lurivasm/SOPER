@@ -54,7 +54,7 @@ typedef struct{
 *@brief Carrera de caballos
 */
 void main(){
-  int caballos, longitud, apostadores, ventanillas, dinero,i;
+  int caballos, longitud, apostadores, ventanillas, dinero, i;
   Caballo_info *c_inf;
   Carera_info *carrera
 
@@ -113,7 +113,7 @@ void main(){
       exit(EXIT_FAILURE);
     }
 
-    /*Papa*/
+    /*Padre : Porceso principal*/
     else if(childpid[i] > 0){
       if(i < caballos-1) continue;
       if(principal() == ERROR){
@@ -122,7 +122,7 @@ void main(){
       }
     }
 
-    /*Hijo*/
+    /*Hijos*/
     else{
       switch(i){
         /*Proceso gestor de apuestas*/
@@ -163,17 +163,37 @@ void main(){
 }
 
 
-int principal(){
+int principal(int **pipeIdam int **pipeVuelta, int caballos){
+  int i, ultimo = MAX_CABALLOS, primero = 1;
+  int *posiciones, *tiradas, *recorridos;
+
+  posiciones = (int*)malloc(sizeof(int)*caballos);
+  tiradas = (int*)malloc(sizeof(int)*caballos);
+  recorridos = (int*)malloc(sizeof(int)*caballos);
   sleep(30);
   signal()
+  for(i = 0; i < MAX_CABALLOS, i++){
+      close(pipeIda[i][1]);
+      close(pipeVuelta[i][0]);
+      posiciones[i] = 0;
+      recorridos[i] = 0;
+    }
+  while(1){
+      write(pipeVuelta[i][1], (void*)posiciones[i], sizeof(int));
+      read(pipeVuelta[i][0], (void*)tiradas[i], sizeof(int));
+      recorridos[i] += tiradas[i];
+      if(recorridos[i] < recorridos[ultimo]) {
+        posiciones[i] = 0;
+        if(recorridos[i] == ultimo = i;
+      }
+      if(recorridos[primero] <= recorridos[i]) {
+        posiciones[i] = 1; 
+      }
+  }
 }
 
 int caballo(int num, int longitud, int *pipeIda, int *pipeVuelta){
-  Caballo_inf info;
-  int recorrido = 0;
-
-  info.id = num;
-  info.posicion = 0;
+  int recorrido = 0, posicion = 0;
   close(pipeIda[0]);
   close(pipeVuelta[1]);
 
@@ -181,23 +201,18 @@ int caballo(int num, int longitud, int *pipeIda, int *pipeVuelta){
   pause();
   while(recorrido < longitud){
     /*Recibimos la posicion en la que estamos*/
-    read(pipeVuelta[0], (void*)info.posicion, sizeof(int));
+    read(pipeVuelta[0], (void*)posicion, sizeof(int));
     /*Si somos ultimos*/
-    if (info.posicion == 0){
-      info.tirada = aleat_num(1,6);
-      recorrido += info.tirada;
-      info.tirada = aleat_num(1,6);
-      recorrido += info.tirada;
+    if (posicion == 0){
+      tirada = aleat_num(1,6);
+      recorrido += tirada;
+      tirada = aleat_num(1,6);
     }
     /*Si somos primeros*/
-    else if (info.tirada == 1){
-      info.tirada = aleat_num(1,7);
-      info.recorrido += info.tirada;
-    }
-    else{
-      info.tirada = aleat_num(1,6);
-      info.recorrido += info.tirada;
-    }
+    else if (tirada == 1) tirada = aleat_num(1,7);
+    else tirada = aleat_num(1,6);
+      
+    recorrido += tirada;
     /*Le enviamos la tirada al padre*/
     write(pipeIda[1], (void*)tirada, sizeof(int));
   }
