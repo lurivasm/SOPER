@@ -27,10 +27,9 @@
 #define KEY 1300
 
 typedef struct{
-  int id_cola;         /*id de la cola de mensajes*/
-  int semid;           /*id de los semaforos*/
+  int num_ventana;      /*id de la ventana*/
   int id_mem;          /*id de la memoria compartida*/
-} Ids_carrera;
+} Hilo_args;
 /**
 *@brief Mensaje de cada apostador al gestor de apuestas
 */
@@ -58,27 +57,28 @@ typedef struct{
   Msg_apuesta mensaje[MAX_APOSTADORES];     /*Mensajes de apuestas*/
 } Carrera_info;
 
-void *ventanilla(int id){
-  int caballo, semid, id_cola;
+void *ventanilla(Hilo_args arg){
+  int semid, id_cola, acabado = 0;
   Msg_apuesta mensaje;
   pthread_mutex_t mutex;
   /*Cogemos la memoria compartida*/
-  Carrera_info *info = shmat(id, (char*)0, 0);
+  Carrera_info *info = shmat(arg.id_mem, (char*)0, 0);
   if(!info) return NULL;
 
   semid = info->semid;
   id_cola = info->id_cola;
   /*Recibimos un mensaje*/
-  while(msgrcv(id_cola, (struct msgbuf *)&mensaje, sizeof(Msg_apuesta) - sizeof(long) - sizeof(int), 1, MSG_NOERROR) > 0){
+  while(acabado == 0){
+    if(msgrcv(id_cola, (struct msgbuf *)&mensaje, sizeof(Msg_apuesta) - sizeof(long) - sizeof(int), 1, MSG_NOERROR) < 0) return NULL;
     pthread_mutex_lock(&mutex);
     if(Down_Semaforo(semid, 2, SEM_UNDO) == ERROR) return NULL;
-    printf("Ventanilla %d\n", info->cont);
     info->mensaje[info->cont] = mensaje;
     info->total_apuestas += mensaje.apuesta;
     info->total_caballo[mensaje.caballo] += mensaje.apuesta;
     info->pago[mensaje.num] = mensaje.apuesta*info->cotizacion[mensaje.caballo];
     info->cotizacion[mensaje.caballo] = info->total_apuestas/info->total_caballo[mensaje.caballo];
     info->cont++;
+    acabado = info->acabado;
     if(Up_Semaforo(semid, 2, SEM_UNDO) == ERROR) return NULL;
     pthread_mutex_unlock(&mutex);
   }
@@ -109,7 +109,7 @@ int apostador(int dinero, int caballos, int apostadores, int id_cola){
     mensaje.apuesta = aleat_num(1, dinero);
     mensaje.caballo = aleat_num(0, caballos-1);
     mensaje.num = i;
-    printf("Apostador %d mandando %d %d\n\n", i, mensaje.apuesta, mensaje.caballo);
+    printf("%s apuesta %lf a %d\n\n", mensaje.nombre, mensaje.apuesta, mensaje.caballo);
     if(msgsnd(id_cola, (struct msgbuf *)&mensaje, sizeof(Msg_apuesta) -sizeof(long) -sizeof(int), 0) < 0)return ERROR;
     sleep(1);
   }
@@ -121,12 +121,13 @@ int apostador(int dinero, int caballos, int apostadores, int id_cola){
 */
 int gestor(int id_cola, int caballos, int apostadores, int ventanillas, int id){
   pthread_t hilo[ventanillas];
+  Hilo_args arg[ventanillas];
   int i;
   int total_caballo[caballos];
   /*Cogemos la memoria compartida*/
   Carrera_info *info = shmat(id, (char*)0, 0);
   if(!info) return ERROR;
-  printf("Gestor inicializa\n");
+
   /*Inicializamos las apuestas de los caballos, las cotizacion y el total*/
   info->cont = 0;
   info->total_apuestas = 0;
@@ -134,16 +135,17 @@ int gestor(int id_cola, int caballos, int apostadores, int ventanillas, int id){
     info->total_caballo[i] = 1;
     info->total_apuestas += total_caballo[i];
     info->cotizacion[i] = info->total_apuestas/total_caballo[i];
-    printf("%d\n", i);
   }
   /*Inicializamos el pago a los apostadores y nos desprendemos de la memoria compartida*/
   for(i = 0; i < apostadores; i++) info->pago[i] = 0;
   shmdt((char*)info);
   /*Inicializamos las ventanillas de apuestas*/
-  printf("Gestor crea hilos\n");
-  for(i = 0; i < ventanillas; i++) pthread_create(&hilo[i], NULL , ventanilla, (void*)id);
-  for(i = 0; i < ventanillas; i++){printf("esperando\n"); pthread_join(hilo[i], NULL);}
-  printf("Gestor muere\n");
+  for(i = 0; i < ventanillas; i++) {
+    arg[i].id_mem = id;
+    arg[i].num_ventana = i;
+    pthread_create(&hilo[i], NULL , ventanilla, (void*)&arg);
+  }
+  for(i = 0; i < ventanillas; i++) pthread_join(hilo[i], NULL);
   return OK;
 }
 /**
@@ -157,7 +159,6 @@ int main(){
   pid_t *childpid;
   sigset_t mask;
   Carrera_info *carrera_info;
-  Ids_carrera ids;
 
   /*Pedimos por teclado los números necesarios*/
   printf("Introduce el numero de caballos : ");
@@ -416,8 +417,7 @@ int principal(sigset_t mask, int **pipeIda, int **pipeVuelta, int caballos, int 
     }
     info->acabado = acabado;
     /*Up del semaforo 0 para que el monitor imprima*/
-    printf("up %d\n",Up_Semaforo(semid, 0, SEM_UNDO) );
-    printf("papa\n");
+    if(Up_Semaforo(semid, 0, SEM_UNDO) == ERROR) return ERROR;
   }
   /*Avisamos a los caballos para que acaben*/
   acabado = -1;
@@ -470,9 +470,8 @@ int monitor(sigset_t mask, int caballos, int longitud, int semid, Carrera_info *
   for(i = 0; i < caballos; i++) printf("C%d\t", i);
   printf("\n");
   while(acabado != 1){
-    printf("monitor\n");
     /*Espera a que el padre le avise para imprimir*/
-    printf("down %d", Down_Semaforo(semid, 0, SEM_UNDO));
+    if(Down_Semaforo(semid, 0, SEM_UNDO) == ERROR) return ERROR;
     printf("Tiradas   \t");
     for(i = 0; i < caballos; i++) printf("%d\t", info->tiradas[i]);
     printf("\nRecorrido\t");
@@ -492,12 +491,12 @@ int monitor(sigset_t mask, int caballos, int longitud, int semid, Carrera_info *
   printf("\t\t|______________________|\n\n");
   /*Imprimimos las apuestas realizadas*/
   printf("\tApuestas realizadas : \n");
-  /*for(i = 0; i < info->cont; i++) {
+  for(i = 0; i < info->cont; i++) {
     printf("\t - %s : %d euros al ", info->mensaje[i].nombre, info->mensaje[i].apuesta);
     printf("Caballo %d () -> Ventanilla\n", info->mensaje[i].caballo);
   }
   /*Imprimimos el resultado de los caballos*/
-  printf("Resultados de la carrera : \n");
+  printf("\tResultados de la carrera : \n");
   for(i = 0; i < caballos; i++) {
     printf("\t - Caballo %d : %d metros recorridos", i+1, info->recorridos[i]);
     if(info->recorridos[i] == longitud) printf(" 1º Posición\n");
