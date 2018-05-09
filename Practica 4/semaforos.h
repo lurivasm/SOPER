@@ -1,3 +1,4 @@
+#define  _GNU_SOURCE
 #ifndef SEMAFOROS_H
 #define SEMAFOROS_H
 

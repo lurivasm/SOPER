@@ -1,158 +1,13 @@
 #define  _GNU_SOURCE
-#include <sys/types.h>
-#include <sys/ipc.h>
-#include <sys/msg.h>
-#include <sys/wait.h>
-#include <sys/shm.h>
-#include <pthread.h>
-#include <unistd.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <errno.h>
-#include <unistd.h>
-#include <signal.h>
-#include <time.h>
-#include "semaforos.h"
+#include "lib.h"
 
-#define MAX_CABALLOS 10
-#define MAX_APOSTADORES 100
-/**
-*@brief file para la clave
-*/
-#define FILEKEY "/bin/cat"
-/**
-*@brief key para los semaforos y la memoria compartida
-*/
-#define KEY 1300
-
-typedef struct{
-  int num_ventana;      /*id de la ventana*/
-  int id_mem;          /*id de la memoria compartida*/
-} Hilo_args;
-/**
-*@brief Mensaje de cada apostador al gestor de apuestas
-*/
-typedef struct{
-  long mtype;         /*Tipo de mensaje (por defecto será 1)*/
-  char nombre[20];    /*Nombre del apostador*/
-  double apuesta;     /*Apuesta que realiza*/
-  int caballo;        /*Caballo por el que apuesta*/
-  int num;            /*Numero de apostador*/
-} Msg_apuesta;
-/**
-*@brief Memoria compartida entre principal, gestor y monitor
-*/
-typedef struct{
-  int id_cola;         /*id de la cola de mensajes*/
-  int semid;           /*id de los semaforos*/
-  int tiradas[MAX_CABALLOS];             /*Tiradas de los caballos*/
-  int recorridos[MAX_CABALLOS];          /*Recorridos de los caballos*/
-  int acabado;                           /*Flag para controlar que la carrera ha terminado*/
-  double cotizacion[MAX_CABALLOS];        /*cotizacion de los caballos*/
-  double pago[MAX_APOSTADORES];             /*Pago al apostador en caso de que gane*/
-  int total_apuestas;                       /*Total apostado a todos los caballos*/
-  int total_caballo[MAX_CABALLOS];          /*Total apostado a cada caballo*/
-  int cont;                                 /*Contador de cuantas apuestas se realizan*/
-  Msg_apuesta mensaje[MAX_APOSTADORES];     /*Mensajes de apuestas*/
-} Carrera_info;
-
-void *ventanilla(Hilo_args arg){
-  int semid, id_cola, acabado = 0;
-  Msg_apuesta mensaje;
-  pthread_mutex_t mutex;
-  /*Cogemos la memoria compartida*/
-  Carrera_info *info = shmat(arg.id_mem, (char*)0, 0);
-  if(!info) return NULL;
-
-  semid = info->semid;
-  id_cola = info->id_cola;
-  /*Recibimos un mensaje*/
-  while(acabado == 0){
-    if(msgrcv(id_cola, (struct msgbuf *)&mensaje, sizeof(Msg_apuesta) - sizeof(long) - sizeof(int), 1, MSG_NOERROR) < 0) return NULL;
-    pthread_mutex_lock(&mutex);
-    if(Down_Semaforo(semid, 2, SEM_UNDO) == ERROR) return NULL;
-    info->mensaje[info->cont] = mensaje;
-    info->total_apuestas += mensaje.apuesta;
-    info->total_caballo[mensaje.caballo] += mensaje.apuesta;
-    info->pago[mensaje.num] = mensaje.apuesta*info->cotizacion[mensaje.caballo];
-    info->cotizacion[mensaje.caballo] = info->total_apuestas/info->total_caballo[mensaje.caballo];
-    info->cont++;
-    acabado = info->acabado;
-    if(Up_Semaforo(semid, 2, SEM_UNDO) == ERROR) return NULL;
-    pthread_mutex_unlock(&mutex);
-  }
-  shmdt((char*)info);
-  return NULL;
-}
-/**
-*
-*/
-void captura(int sennal);
-int aleat_num(int inf, int sup);
-int principal(sigset_t mask, int **pipeIda, int **pipeVuelta, int caballos, int longitud, int semid, Carrera_info *info, pid_t *childpid);
-int caballo(int num, int longitud, int *pipeIda, int *pipeVuelta);
-int monitor(sigset_t mask, int caballos, int longitud, int semid, Carrera_info *info);
-/**
-* Proceso apostador
-*/
-int apostador(int dinero, int caballos, int apostadores, int id_cola){
-  int i;
-  Msg_apuesta mensaje;
-
-  /*Control de errores*/
-  if(caballos < 0 || apostadores < 0) return ERROR;
-  mensaje.mtype = 1;
-  /*Enviamos un mensaje por cada apostador*/
-  for(i = 0; i < apostadores; i++){
-    sprintf(mensaje.nombre, "Apostador-%d", i+1);
-    mensaje.apuesta = aleat_num(1, dinero);
-    mensaje.caballo = aleat_num(0, caballos-1);
-    mensaje.num = i;
-    printf("%s apuesta %lf a %d\n\n", mensaje.nombre, mensaje.apuesta, mensaje.caballo);
-    if(msgsnd(id_cola, (struct msgbuf *)&mensaje, sizeof(Msg_apuesta) -sizeof(long) -sizeof(int), 0) < 0)return ERROR;
-    sleep(1);
-  }
-  return OK;
-}
-
-/**
-* Proceso gestor de apuestas
-*/
-int gestor(int id_cola, int caballos, int apostadores, int ventanillas, int id){
-  pthread_t hilo[ventanillas];
-  Hilo_args arg[ventanillas];
-  int i;
-  int total_caballo[caballos];
-  /*Cogemos la memoria compartida*/
-  Carrera_info *info = shmat(id, (char*)0, 0);
-  if(!info) return ERROR;
-
-  /*Inicializamos las apuestas de los caballos, las cotizacion y el total*/
-  info->cont = 0;
-  info->total_apuestas = 0;
-  for(i = 0; i < caballos; i++){
-    info->total_caballo[i] = 1;
-    info->total_apuestas += total_caballo[i];
-    info->cotizacion[i] = info->total_apuestas/total_caballo[i];
-  }
-  /*Inicializamos el pago a los apostadores y nos desprendemos de la memoria compartida*/
-  for(i = 0; i < apostadores; i++) info->pago[i] = 0;
-  shmdt((char*)info);
-  /*Inicializamos las ventanillas de apuestas*/
-  for(i = 0; i < ventanillas; i++) {
-    arg[i].id_mem = id;
-    arg[i].num_ventana = i;
-    pthread_create(&hilo[i], NULL , ventanilla, (void*)&arg);
-  }
-  for(i = 0; i < ventanillas; i++) pthread_join(hilo[i], NULL);
-  return OK;
-}
+void libera_memoria(int id_cola, int id, int semid, unsigned short* sem, int **pipesIda, int **pipesVuelta, pid_t *pid);
 /**
 *@brief Carrera de caballos
+* En el main se reserva y libera la memoria, además de lanzar los hijos
 */
 int main(){
-  int caballos, longitud, apostadores, ventanillas, dinero, i, semid, key, id, id_cola;
+  int caballos, longitud, apostadores, ventanillas, dinero, i, semid, key, id, id_cola, j;
   unsigned short *sem;
   int **pipesIda;
   int **pipesVuelta;
@@ -172,7 +27,7 @@ int main(){
 
   printf("\nIntroduce el numero de apostadores : ");
   scanf("%d",&apostadores);
-  if(apostadores> MAX_APOSTADORES ){
+  if(apostadores > MAX_APOSTADORES ){
     perror("Error en los apostadores");
     exit(EXIT_FAILURE);
   }
@@ -182,13 +37,13 @@ int main(){
   scanf("%d",&dinero);
 
   /*Asignamos manejadores y señales*/
-  if(signal(SIGUSR1, captura) == SIG_ERR) return ERROR;
-  if(signal(SIGUSR2, captura) == SIG_ERR) return ERROR;
-  if(signal(SIGALRM, captura) == SIG_ERR) return ERROR;
-  if(sigfillset(&mask) == -1) return ERROR;
-  if(sigdelset(&mask, SIGUSR1) == -1) return ERROR;
-  if(sigdelset(&mask, SIGALRM) == -1) return ERROR;
-  if(sigdelset(&mask, SIGUSR2) == -1) return ERROR;
+  if(signal(SIGUSR1, captura) == SIG_ERR) exit(EXIT_FAILURE);
+  if(signal(SIGUSR2, captura) == SIG_ERR) exit(EXIT_FAILURE);
+  if(signal(SIGALRM, captura) == SIG_ERR) exit(EXIT_FAILURE);
+  if(sigfillset(&mask) == -1) exit(EXIT_FAILURE);
+  if(sigdelset(&mask, SIGUSR1) == -1) exit(EXIT_FAILURE);
+  if(sigdelset(&mask, SIGALRM) == -1) exit(EXIT_FAILURE);
+  if(sigdelset(&mask, SIGUSR2) == -1) exit(EXIT_FAILURE);
 
   /*Creamos la memoria compartida*/
   key = ftok(FILEKEY, KEY);
@@ -206,21 +61,6 @@ int main(){
   if(!carrera_info){
     perror("Error en shmat");
     exit(EXIT_FAILURE);
-  }
-
-  /*Creamos los pipes*/
-  pipesIda = (int**)malloc(sizeof(int*)*caballos);
-  pipesVuelta = (int**)malloc(sizeof(int*)*caballos);
-  childpid = (pid_t*)malloc(sizeof(pid_t)*(caballos+3));
-  for(i = 0 ; i < caballos ; i++){
-    pipesIda[i] = (int*)malloc(sizeof(int)*2);
-    pipesVuelta[i] = (int*)malloc(sizeof(int)*2);
-    if(pipe(pipesIda[i]) == -1 || pipe(pipesVuelta[i]) == -1){
-      perror("Error	creando	la tuberia");
-      shmdt((char*)carrera_info);
-      shmctl (id, IPC_RMID, (struct shmid_ds *)NULL);
-      exit(EXIT_FAILURE);
-    }
   }
 
   /*Creamos los semáforos, uno para la memoria compartida*/
@@ -253,11 +93,69 @@ int main(){
   /*Creamos la cola de mensajes para apostadores*/
   id_cola = msgget(key, IPC_CREAT | 0660);
   if(id_cola == -1){
+    Borrar_Semaforo(semid);
+    free(sem);
+    shmdt((char*)carrera_info);
+    shmctl (id, IPC_RMID, (struct shmid_ds *)NULL);
     perror("Error de clave");
     exit(EXIT_FAILURE);
   }
   carrera_info->id_cola = id_cola;
   carrera_info->semid = semid;
+
+  /*Creamos un array para los pids*/
+  childpid = (pid_t*)malloc(sizeof(pid_t)*(caballos+3));
+  if(!childpid){
+    perror("Error	memoria");
+    Borrar_Semaforo(semid);
+    free(sem);
+    shmdt((char*)carrera_info);
+    shmctl (id, IPC_RMID, (struct shmid_ds *)NULL);
+    msgctl (id_cola, IPC_RMID, (struct msqid_ds *)NULL);
+    exit(EXIT_FAILURE);
+  }
+
+  /*Creamos los pipes*/
+  pipesIda = (int**)malloc(sizeof(int*)*caballos);
+  if(!pipesIda){
+    perror("Error	memoria");
+    Borrar_Semaforo(semid);
+    free(sem);
+    free(childpid);
+    shmdt((char*)carrera_info);
+    shmctl (id, IPC_RMID, (struct shmid_ds *)NULL);
+    msgctl (id_cola, IPC_RMID, (struct msqid_ds *)NULL);
+    exit(EXIT_FAILURE);
+  }
+  pipesVuelta = (int**)malloc(sizeof(int*)*caballos);
+  if(!pipesVuelta){
+    perror("Error	memoria");
+    free(pipesIda);
+    free(childpid);
+    Borrar_Semaforo(semid);
+    free(sem);
+    shmdt((char*)carrera_info);
+    shmctl (id, IPC_RMID, (struct shmid_ds *)NULL);
+    msgctl (id_cola, IPC_RMID, (struct msqid_ds *)NULL);
+    exit(EXIT_FAILURE);
+  }
+  for(i = 0 ; i < caballos ; i++){
+    pipesIda[i] = (int*)malloc(sizeof(int)*2);
+    pipesVuelta[i] = (int*)malloc(sizeof(int)*2);
+    if(pipe(pipesIda[i]) == -1 || pipe(pipesVuelta[i]) == -1){
+      perror("Error	creando	la tuberia");
+      shmdt((char*)carrera_info);
+      shmctl (id, IPC_RMID, (struct shmid_ds *)NULL);
+      msgctl (id_cola, IPC_RMID, (struct msqid_ds *)NULL);
+      for(j = i; 0 <= j; j--){
+        free(pipesIda[j]);
+        free(pipesVuelta[j]);
+      }
+      free(pipesIda);
+      free(pipesVuelta);
+      exit(EXIT_FAILURE);
+    }
+  }
 
   /*Creamos los hijos, siempre el numero de caballos + 3*/
   for(i = 0 ; i < caballos+3 ; i++){
@@ -269,6 +167,13 @@ int main(){
       shmdt((char*)carrera_info);
       shmctl (id, IPC_RMID, (struct shmid_ds *)NULL);
       msgctl (id_cola, IPC_RMID, (struct msqid_ds *)NULL);
+      for(i = 0; i <caballos; i++){
+        free(pipesIda[i]);
+        free(pipesVuelta[i]);
+      }
+      free(pipesIda);
+      free(pipesVuelta);
+      free(childpid);
       exit(EXIT_FAILURE);
     }
 
@@ -285,6 +190,13 @@ int main(){
         shmdt((char*)carrera_info);
         shmctl (id, IPC_RMID, (struct shmid_ds *)NULL);
         msgctl (id_cola, IPC_RMID, (struct msqid_ds *)NULL);
+        for(i = 0; i <caballos; i++){
+          free(pipesIda[i]);
+          free(pipesVuelta[i]);
+        }
+        free(pipesIda);
+        free(pipesVuelta);
+        free(childpid);
         exit(EXIT_FAILURE);
       }
     }
@@ -294,26 +206,35 @@ int main(){
       switch(i){
         /*Proceso gestor de apuestas*/
         case 0:
+          for(i = 0; i <caballos; i++){
+            free(pipesIda[i]);
+            free(pipesVuelta[i]);
+          }
+          free(pipesIda);
+          free(pipesVuelta);
+          free(childpid);
+          free(sem);
           if(gestor(id_cola, caballos, apostadores, ventanillas, id) == ERROR){
             perror("Error en el gestor de apuestas");
-            Borrar_Semaforo(semid);
             free(sem);
             shmdt((char*)carrera_info);
-            shmctl (id, IPC_RMID, (struct shmid_ds *)NULL);
-            msgctl (id_cola, IPC_RMID, (struct msqid_ds *)NULL);
             exit(EXIT_FAILURE);
           }
           break;
 
         /*Proceso monitor*/
         case 1:
-          if(monitor(mask, caballos, longitud, semid, carrera_info) == ERROR){
+          if(monitor(mask, caballos, longitud, semid, carrera_info, dinero) == ERROR){
             perror("Error en el monitor");
-            Borrar_Semaforo(semid);
             free(sem);
             shmdt((char*)carrera_info);
-            shmctl (id, IPC_RMID, (struct shmid_ds *)NULL);
-            msgctl (id_cola, IPC_RMID, (struct msqid_ds *)NULL);
+            for(i = 0; i < caballos; i++){
+              free(pipesIda[i]);
+              free(pipesVuelta[i]);
+            }
+            free(pipesIda);
+            free(pipesVuelta);
+            free(childpid);
             exit(EXIT_FAILURE);
           }
           break;
@@ -322,14 +243,16 @@ int main(){
         case 2:
           free(sem);
           shmdt((char*)carrera_info);
+          for(i = 0; i <caballos; i++){
+            free(pipesIda[i]);
+            free(pipesVuelta[i]);
+          }
+          free(pipesIda);
+          free(pipesVuelta);
+          free(childpid);
           srand(getpid());
           if(apostador(dinero, caballos, apostadores, id_cola) == ERROR){
             perror("Error en el apostador");
-            Borrar_Semaforo(semid);
-            free(sem);
-            shmdt((char*)carrera_info);
-            shmctl (id, IPC_RMID, (struct shmid_ds *)NULL);
-            msgctl (id_cola, IPC_RMID, (struct msqid_ds *)NULL);
             exit(EXIT_FAILURE);
           }
           break;
@@ -339,11 +262,16 @@ int main(){
           srand(getpid());
           if(caballo(i-3, longitud, pipesIda[i-3], pipesVuelta[i-3]) == ERROR){
             perror("Error en el caballo");
-            Borrar_Semaforo(semid);
             free(sem);
             shmdt((char*)carrera_info);
-            shmctl (id, IPC_RMID, (struct shmid_ds *)NULL); /*Preguntar si borrar esto en hijos*/
             msgctl (id_cola, IPC_RMID, (struct msqid_ds *)NULL);
+            for(i = 0; i <caballos; i++){
+              free(pipesIda[i]);
+              free(pipesVuelta[i]);
+            }
+            free(pipesIda);
+            free(pipesVuelta);
+            free(childpid);
             exit(EXIT_FAILURE);
           }
           break;
@@ -351,203 +279,30 @@ int main(){
       /*Liberamos y salimos*/
       free(sem);
       shmdt((char*)carrera_info);
+      for(i = 0; i <caballos; i++){
+        free(pipesIda[i]);
+        free(pipesVuelta[i]);
+      }
+      free(pipesIda);
+      free(pipesVuelta);
+      free(childpid);
       exit(EXIT_SUCCESS);
     }
   }
 
   /*Liberamos y eliminamos todo y salimos*/
   for(i = 0; i < caballos+3; i++) wait(NULL);
+  for(i = 0; i <caballos; i++){
+    free(pipesIda[i]);
+    free(pipesVuelta[i]);
+  }
+  free(pipesIda);
+  free(pipesVuelta);
   free(sem);
+  free(childpid);
   Borrar_Semaforo(semid);
   shmdt((char*)carrera_info);
   shmctl (id, IPC_RMID, (struct shmid_ds *)NULL);
   msgctl (id_cola, IPC_RMID, (struct msqid_ds *)NULL);
   exit(EXIT_SUCCESS);
-}
-
-
-int principal(sigset_t mask, int **pipeIda, int **pipeVuelta, int caballos, int longitud, int semid, Carrera_info *info, pid_t *childpid){
-  int i, ultimo = 0, primero = 0, acabado = 0;
-  int posiciones[caballos], recorridos[caballos], tiradas[caballos];
-
-  /*Control de errores*/
-  if(!pipeIda || !pipeVuelta || !info || !childpid) return ERROR;
-  if(!info->tiradas || !info->recorridos) return ERROR;
-  /*Inicializamos los pipes, las posiciones y los recorridos*/
-  for(i = 0; i < caballos; i++){
-      close(pipeIda[i][1]);
-      close(pipeVuelta[i][0]);
-      posiciones[i] = 2;
-      recorridos[i] = 0;
-    }
-
-  /*Hasta comenzar la carrera*/
-  sigsuspend(&mask);
-  /*Matamos a los apostadores y al gestor de apuestas*/
-  kill(childpid[2], SIGUSR2);
-  kill(childpid[0], SIGUSR2);
-
-  while(acabado != 1){
-    /*Enviamos la posicion de cada caballo*/
-    for(i = 0; i < caballos; i++) {
-      if(recorridos[i] <= recorridos[ultimo] && i != 0) posiciones[ultimo] = 0;
-      else if(recorridos[i] >= recorridos[primero] && i != 0) posiciones[primero] = 1;
-      write(pipeVuelta[i][1], &posiciones[i], sizeof(int));
-    }
-    ultimo = 0;
-    primero = 0;
-
-    /*Leemos la tirada y recalculamos*/
-    if(Down_Semaforo(semid, 1, SEM_UNDO) == ERROR) return ERROR;
-
-    for(i = 0; i < caballos; i++) {
-      read(pipeIda[i][0], &tiradas[i], sizeof(int));
-      recorridos[i] += tiradas[i];
-      if(recorridos[i] <= recorridos[ultimo]) ultimo = i;
-      else if(recorridos[i] >= recorridos[primero]) primero = i;
-      posiciones[i] = 2;
-      info->recorridos[i] = recorridos[i];
-      info->tiradas[i] = tiradas[i];
-
-      /*Si un caballo alcanza la meta se acaba la carrera*/
-      if(longitud <= recorridos[i]){
-        acabado = 1;
-        info->recorridos[i] = longitud;
-      }
-    }
-    info->acabado = acabado;
-    /*Up del semaforo 0 para que el monitor imprima*/
-    if(Up_Semaforo(semid, 0, SEM_UNDO) == ERROR) return ERROR;
-  }
-  /*Avisamos a los caballos para que acaben*/
-  acabado = -1;
-  for(i = 0; i < caballos; i++) write(pipeVuelta[i][1], &acabado, sizeof(int));
-  sigsuspend(&mask);
-  return OK;
-}
-
-/*Funcion de cada caballo*/
-int caballo(int num, int longitud, int *pipeIda, int *pipeVuelta){
-  int recorrido = 0, posicion = 0, tirada;
-  close(pipeIda[0]);
-  close(pipeVuelta[1]);
-
-  while(1){
-    /*Recibimos la posicion en la que estamos*/
-    read(pipeVuelta[0], &posicion, sizeof(int));
-    /*Si recibimos -1 significa que debemos acabar*/
-    if(posicion == -1) break;
-
-    /*Si somos ultimos*/
-    else if (posicion == 0){
-      tirada = aleat_num(1,6);
-      recorrido += tirada;
-      tirada += aleat_num(1,6);
-    }
-    /*Si somos primeros*/
-    else if (tirada == 1) tirada = aleat_num(1,7);
-    else tirada = aleat_num(1,6);
-    recorrido += tirada;
-
-    /*Le enviamos la tirada al padre*/
-    write(pipeIda[1], &tirada, sizeof(int));
-  }
-  return OK;
-}
-
-/*Función de cada monitor*/
-int monitor(sigset_t mask, int caballos, int longitud, int semid, Carrera_info *info){
-  int i, acabado = 0;
-
-  for(i = 1; i > 0; i--){
-    printf("Quedan %d segundos\n", i*10);
-    sleep(7);
-  }
-  printf("\nComienza la carrera!\n\n");
-  /*Avisamos al padre de que comienza la carrera*/
-  kill(getppid(), SIGUSR1);
-  printf("\t\t");
-  for(i = 0; i < caballos; i++) printf("C%d\t", i);
-  printf("\n");
-  while(acabado != 1){
-    /*Espera a que el padre le avise para imprimir*/
-    if(Down_Semaforo(semid, 0, SEM_UNDO) == ERROR) return ERROR;
-    printf("Tiradas   \t");
-    for(i = 0; i < caballos; i++) printf("%d\t", info->tiradas[i]);
-    printf("\nRecorrido\t");
-    for(i = 0; i < caballos; i++) printf("%d\t", info->recorridos[i]);
-    printf("\n");
-    acabado = info->acabado;
-    if(Up_Semaforo(semid, 1, SEM_UNDO) == ERROR) return ERROR;
-  }
-  printf("\nLa carrera ha finalizado! En breves daremos el report\n\n");
-
-  /*Esperamos 15 segundos hasta realizar el report*/
-  alarm(5);
-  sigsuspend(&mask);
-  printf("\t\t ______________________ \n");
-  printf("\t\t|                      |\n");
-  printf("\t\t| REPORT DE LA CARRERA |\n");
-  printf("\t\t|______________________|\n\n");
-  /*Imprimimos las apuestas realizadas*/
-  printf("\tApuestas realizadas : \n");
-  for(i = 0; i < info->cont; i++) {
-    printf("\t - %s : %d euros al ", info->mensaje[i].nombre, info->mensaje[i].apuesta);
-    printf("Caballo %d () -> Ventanilla\n", info->mensaje[i].caballo);
-  }
-  /*Imprimimos el resultado de los caballos*/
-  printf("\tResultados de la carrera : \n");
-  for(i = 0; i < caballos; i++) {
-    printf("\t - Caballo %d : %d metros recorridos", i+1, info->recorridos[i]);
-    if(info->recorridos[i] == longitud) printf(" 1º Posición\n");
-    else {printf("\n");}
-  }
-  /*Avisamos al padre de que hemos acabado y salimos*/
-  kill(getppid(), SIGUSR1);
-  return OK;
-}
-
-
-
-
-/**
-* Función capturadora de la señal
-*/
-void captura(int sennal){
-  char key[50];
-  int k;
-  if(sennal == SIGUSR2){
-    exit(EXIT_SUCCESS);
-  }
-  /*En caso de cancelar el programa eliminamos la zona de memoria compartida y los semaforos*/
-  else if(sennal == SIGINT){
-    k = ftok(FILEKEY, KEY);
-    printf("Cancelando carrera %d\n", getpid());
-    sprintf(key, "ipcrm -M %d", k);
-    system(key);
-    sprintf(key, "ipcrm -S %d", k);
-    system(key);
-    /*Matamos al proceso*/
-    kill(getpid(), SIGKILL);
-    return;
-  }
-  return;
-}
-
-/**
-* Funcion aleatoria
-*/
-int aleat_num(int inf, int sup){
-  int aux;
-  /*En caso de que alguno sea negativo los cambia a positivo*/
-  if(sup < 0) sup = -sup;
-  if(inf < 0) inf = -inf;
-
-  /*En caso de que sup sea menor que inf los permuta*/
-  if( sup < inf ){
-    aux = sup;
-    sup = inf;
-    inf = aux;
-  }
-  return inf+(rand()%(sup-inf+1));
 }
