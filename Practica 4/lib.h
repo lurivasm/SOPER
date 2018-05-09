@@ -1,3 +1,11 @@
+/**
+*@brief Libreria para las funciones de la carrera entre las que se encuentran
+* las funciones de cada proceso hijo y padre, hilos y auxiliares
+*@author Lucia Rivas Molina
+*@author Daniel Santo-Tomas Lopez
+*@date 9/05/2018
+*@file lib.h
+*/
 #define  _GNU_SOURCE
 #ifndef LIB_H
 #define LIB_H
@@ -16,6 +24,8 @@
 #include <unistd.h>
 #include <signal.h>
 #include <time.h>
+#include <syslog.h>
+
 #include "semaforos.h"
 
 /**
@@ -41,6 +51,7 @@
 */
 typedef struct{
   int num_ventana;      /*id de la ventana*/
+  int id_cola;         /*id de la cola de mensajes*/
   int id_mem;          /*id de la memoria compartida*/
 } Hilo_args;
 /**
@@ -48,7 +59,7 @@ typedef struct{
 */
 typedef struct{
   long mtype;         /*Tipo de mensaje (por defecto será 1)*/
-  char nombre[20];    /*Nombre del apostador*/
+  char nombre[16];    /*Nombre del apostador*/
   double apuesta;     /*Apuesta que realiza*/
   int caballo;        /*Caballo por el que apuesta*/
   int ventanilla;     /*Numero de ventanilla en la que apuesta*/
@@ -59,16 +70,14 @@ typedef struct{
 *@brief Memoria compartida entre principal, gestor y monitor
 */
 typedef struct{
-  int id_cola;         /*id de la cola de mensajes*/
-  int semid;           /*id de los semaforos*/
   int tiradas[MAX_CABALLOS];             /*Tiradas de los caballos*/
   int recorridos[MAX_CABALLOS];          /*Recorridos de los caballos*/
   int acabado;                           /*Flag para controlar que la carrera ha terminado*/
-  double cotizacion[MAX_CABALLOS];        /*cotizacion de los caballos*/
-  int total_apuestas;                       /*Total apostado a todos los caballos*/
-  int total_caballo[MAX_CABALLOS];          /*Total apostado a cada caballo*/
-  int cont;                                 /*Contador de cuantas apuestas se realizan*/
-  Msg_apuesta mensaje[MAX_APOSTADORES];     /*Mensajes de apuestas*/
+  double cotizacion[MAX_CABALLOS];       /*cotizacion de los caballos*/
+  int total_apuestas;                    /*Total apostado a todos los caballos*/
+  int total_caballo[MAX_CABALLOS];       /*Total apostado a cada caballo*/
+  int cont;                              /*Contador de cuantas apuestas se realizan*/
+  Msg_apuesta mensaje[MAX_APOSTADORES];  /*Mensajes de apuestas*/
 } Carrera_info;
 
 /**
@@ -118,6 +127,7 @@ int apostador(int dinero, int caballos, int apostadores, int id_cola);
 /**
 *@brief Funcion encargada de inicializar las variables de la memoria
 * compartida relacionadas con el dinero y de crear las ventanillas
+*@param mask : mascara de señales permitidas
 *@param id_cola : id de la cola de mensajes
 *@param caballos : numero de caballos
 *@param apostadores : numero de apostadores introducido por teclado
@@ -125,7 +135,7 @@ int apostador(int dinero, int caballos, int apostadores, int id_cola);
 *@param id : id de la cola de mensajes
 *@return OK o ERROR
 */
-int gestor(int id_cola, int caballos, int apostadores, int ventanillas, int id);
+int gestor(sigset_t mask, int id_cola, int caballos, int apostadores, int ventanillas, int id);
 /**
 *@brief Funcion de los hilos encargada de recibir las apuestas y
 * agregarlas a la memoria compartida

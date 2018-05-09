@@ -1,19 +1,27 @@
+/**
+*@brief main de la carrera de caballos
+*@author Lucia Rivas Molina
+*@author Daniel Santo-Tomas Lopez
+*@date 9/05/2018
+*@file carrera.c
+*/
 #define  _GNU_SOURCE
 #include "lib.h"
 
-void libera_memoria(int id_cola, int id, int semid, unsigned short* sem, int **pipesIda, int **pipesVuelta, pid_t *pid);
 /**
 *@brief Carrera de caballos
 * En el main se reserva y libera la memoria, además de lanzar los hijos
 */
-int main(){
-  int caballos, longitud, apostadores, ventanillas, dinero, i, semid, key, id, id_cola, j;
+int main(void){
+  int caballos, longitud, apostadores, ventanillas, dinero, i, semid, key, id, id_cola, j, status;
   unsigned short *sem;
   int **pipesIda;
   int **pipesVuelta;
   pid_t *childpid;
   sigset_t mask;
   Carrera_info *carrera_info;
+
+  openlog("Carrera SOPER",LOG_PID, LOG_SYSLOG);
 
   /*Pedimos por teclado los números necesarios*/
   printf("Introduce el numero de caballos : ");
@@ -36,14 +44,21 @@ int main(){
   printf("\nIntroduce el dinero disponible por apostador : ");
   scanf("%d",&dinero);
 
+  if(caballos < 0 || longitud < 0 || apostadores < 0 || ventanillas < 0 || dinero < 0){
+    perror("Error valores negativos");
+    exit(EXIT_FAILURE);
+  }
+
   /*Asignamos manejadores y señales*/
   if(signal(SIGUSR1, captura) == SIG_ERR) exit(EXIT_FAILURE);
   if(signal(SIGUSR2, captura) == SIG_ERR) exit(EXIT_FAILURE);
   if(signal(SIGALRM, captura) == SIG_ERR) exit(EXIT_FAILURE);
+  if(signal(SIGTERM, captura) == SIG_ERR) exit(EXIT_FAILURE);
   if(sigfillset(&mask) == -1) exit(EXIT_FAILURE);
   if(sigdelset(&mask, SIGUSR1) == -1) exit(EXIT_FAILURE);
   if(sigdelset(&mask, SIGALRM) == -1) exit(EXIT_FAILURE);
   if(sigdelset(&mask, SIGUSR2) == -1) exit(EXIT_FAILURE);
+  if(sigdelset(&mask, SIGTERM) == -1) exit(EXIT_FAILURE);
 
   /*Creamos la memoria compartida*/
   key = ftok(FILEKEY, KEY);
@@ -56,7 +71,8 @@ int main(){
       perror("Error en shmget");
       exit(EXIT_FAILURE);
   }
-  printf("El id de la memoria es %i\n", id);
+
+  syslog(LOG_INFO, "Creada memoria compartida con id %d", id);
   carrera_info = shmat(id, (char*)0, 0);
   if(!carrera_info){
     perror("Error en shmat");
@@ -64,13 +80,13 @@ int main(){
   }
 
   /*Creamos los semáforos, uno para la memoria compartida*/
-  if (Crear_Semaforo(key, 3, &semid) == ERROR){
+  if (Crear_Semaforo(key, 2, &semid) == ERROR){
     perror("Error en el semaforo");
     shmdt((char*)carrera_info);
     shmctl (id, IPC_RMID, (struct shmid_ds *)NULL);
     exit(EXIT_FAILURE);
   }
-  sem = (unsigned short*)malloc(sizeof(short)*3);
+  sem = (unsigned short*)malloc(sizeof(short)*2);
   if(!sem){
     Borrar_Semaforo(semid);
     shmdt((char*)carrera_info);
@@ -80,7 +96,6 @@ int main(){
     }
   sem[0] = 0;
   sem[1] = 1;
-  sem[2] = 1;
   if (Inicializar_Semaforo(semid, sem) == ERROR){
     Borrar_Semaforo(semid);
     free(sem);
@@ -89,6 +104,7 @@ int main(){
     perror("Error en el semaforo");
     exit(EXIT_FAILURE);
     }
+  syslog(LOG_INFO, "Creados semaforos con id %d", semid);
 
   /*Creamos la cola de mensajes para apostadores*/
   id_cola = msgget(key, IPC_CREAT | 0660);
@@ -100,8 +116,7 @@ int main(){
     perror("Error de clave");
     exit(EXIT_FAILURE);
   }
-  carrera_info->id_cola = id_cola;
-  carrera_info->semid = semid;
+  syslog(LOG_INFO, "Creada cola de mensajes con id %d", id_cola);
 
   /*Creamos un array para los pids*/
   childpid = (pid_t*)malloc(sizeof(pid_t)*(caballos+3));
@@ -206,17 +221,16 @@ int main(){
       switch(i){
         /*Proceso gestor de apuestas*/
         case 0:
-          for(i = 0; i <caballos; i++){
-            free(pipesIda[i]);
-            free(pipesVuelta[i]);
-          }
-          free(pipesIda);
-          free(pipesVuelta);
-          free(childpid);
-          free(sem);
-          if(gestor(id_cola, caballos, apostadores, ventanillas, id) == ERROR){
+          if(gestor(mask, id_cola, caballos, apostadores, ventanillas, id) == ERROR){
             perror("Error en el gestor de apuestas");
             free(sem);
+            for(i = 0; i <caballos; i++){
+              free(pipesIda[i]);
+              free(pipesVuelta[i]);
+            }
+            free(pipesIda);
+            free(pipesVuelta);
+            free(childpid);
             shmdt((char*)carrera_info);
             exit(EXIT_FAILURE);
           }
@@ -239,7 +253,7 @@ int main(){
           }
           break;
 
-        /*Proceso apostador*/
+        /*Proceso apostador, como no necesita nada lo liberamos todo*/
         case 2:
           free(sem);
           shmdt((char*)carrera_info);
@@ -255,7 +269,7 @@ int main(){
             perror("Error en el apostador");
             exit(EXIT_FAILURE);
           }
-          break;
+          exit(EXIT_SUCCESS);
 
         /*Caballos*/
         default:
@@ -276,6 +290,7 @@ int main(){
           }
           break;
       }
+      syslog(LOG_INFO, "Liberamos memoria, CARRERA FINALIZADA");
       /*Liberamos y salimos*/
       free(sem);
       shmdt((char*)carrera_info);
@@ -286,12 +301,13 @@ int main(){
       free(pipesIda);
       free(pipesVuelta);
       free(childpid);
+      closelog();
       exit(EXIT_SUCCESS);
     }
   }
 
   /*Liberamos y eliminamos todo y salimos*/
-  for(i = 0; i < caballos+3; i++) wait(NULL);
+  for(i = 0; i < caballos+3; i++) waitpid(childpid[i], &status, WUNTRACED | WCONTINUED);
   for(i = 0; i <caballos; i++){
     free(pipesIda[i]);
     free(pipesVuelta[i]);
@@ -304,5 +320,6 @@ int main(){
   shmdt((char*)carrera_info);
   shmctl (id, IPC_RMID, (struct shmid_ds *)NULL);
   msgctl (id_cola, IPC_RMID, (struct msqid_ds *)NULL);
+  closelog();
   exit(EXIT_SUCCESS);
 }

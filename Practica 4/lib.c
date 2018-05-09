@@ -1,4 +1,11 @@
-
+/**
+*@brief Libreria para las funciones de la carrera entre las que se encuentran
+* las funciones de cada proceso hijo y padre, hilos y auxiliares
+*@author Lucia Rivas Molina
+*@author Daniel Santo-Tomas Lopez
+*@date 9/05/2018
+*@file lib.c
+*/
 #include "lib.h"
 
 /**
@@ -27,13 +34,14 @@ int principal(sigset_t mask, int **pipeIda, int **pipeVuelta, int caballos, int 
       close(pipeVuelta[i][0]);
       posiciones[i] = 2;
       recorridos[i] = 0;
-    }
+  }
 
   /*Hasta comenzar la carrera*/
   sigsuspend(&mask);
+  syslog(LOG_INFO, "Proceso principal mandando tiradas");
   /*Matamos a los apostadores y al gestor de apuestas*/
   kill(childpid[2], SIGUSR2);
-  kill(childpid[0], SIGUSR2);
+  kill(childpid[0], SIGUSR1);
 
   while(acabado != 1){
     /*Enviamos la posicion de cada caballo*/
@@ -69,6 +77,7 @@ int principal(sigset_t mask, int **pipeIda, int **pipeVuelta, int caballos, int 
   }
   /*Avisamos a los caballos para que acaben*/
   acabado = -1;
+  syslog(LOG_INFO, "La carrera ha terminado");
   for(i = 0; i < caballos; i++) write(pipeVuelta[i][1], &acabado, sizeof(int));
 
   return OK;
@@ -87,7 +96,7 @@ int caballo(int num, int longitud, int *pipeIda, int *pipeVuelta){
   int recorrido = 0, posicion = 0, tirada = 0;
   close(pipeIda[0]);
   close(pipeVuelta[1]);
-
+  syslog(LOG_INFO, "Caballo %d leyendo tiradas", num+1);
   while(1){
     /*Recibimos la posicion en la que estamos*/
     read(pipeVuelta[0], &posicion, sizeof(int));
@@ -108,6 +117,7 @@ int caballo(int num, int longitud, int *pipeIda, int *pipeVuelta){
     /*Le enviamos la tirada al padre*/
     write(pipeIda[1], &tirada, sizeof(int));
   }
+  syslog(LOG_INFO, "Caballo %d finalizando", num+1);
   return OK;
 }
 
@@ -125,23 +135,25 @@ int monitor(sigset_t mask, int caballos, int longitud, int semid, Carrera_info *
   int i, acabado = 0, cont = 10;
   int *ganadores;
   double *ganancias;
-
+  /*Control de errores*/
+  if(!info || dinero < 0 || caballos < 0 || longitud < 0) return ERROR;
+  /*Contamos 30 segundos y avisamos al padre para comenzar la carrera*/
   for(i = 3; i > 0; i--){
     printf("Quedan %d segundos\n", i*10);
-    sleep(10);
+    alarm(10);
+    sigsuspend(&mask);
   }
   kill(getppid(), SIGUSR1);
-  sleep(2);
+  sleep(3);
   /*Imprimimos las corizaciones*/
-  printf("COTIZACIONES POR CABALLO :\n");
+  printf("\nCOTIZACIONES POR CABALLO :\n");
   for(i = 0; i < caballos; i++) {
     printf(" - Caballo %d : %.2lf\n", i+1, info->cotizacion[i]);
   }
   sleep(2);
-  /*Avisamos al padre de que comienza la carrera*/
   printf("\nComienza la carrera!\n\n");
   printf("\t\t");
-  for(i = 0; i < caballos; i++) printf("C%d\t", i);
+  for(i = 0; i < caballos; i++) printf("C%d\t", i+1);
   printf("\n");
   /*La carrera es impresa hasta que el padre haga acabado = 1*/
   while(acabado != 1){
@@ -163,6 +175,7 @@ int monitor(sigset_t mask, int caballos, int longitud, int semid, Carrera_info *
       info->mensaje[i].pago = 0;
     }
   }
+  /*Reservamos memoria para las tablas de los diez mayores ganadores*/
   ganadores = (int*)malloc(sizeof(int)*info->cont);
   if(!ganadores) return ERROR;
   ganancias = (double*)malloc(sizeof(double)*info->cont);
@@ -174,7 +187,7 @@ int monitor(sigset_t mask, int caballos, int longitud, int semid, Carrera_info *
     ganadores[i] = i;
     ganancias[i] = info->mensaje[i].pago;
   }
-  /*Ordenamos e imprimimos*/
+  /*Ordenamos los ganadores e imprimimos*/
   if(BubbleSort(ganadores, ganancias, 0, info->cont-1) < 0) {
     free(ganadores);
     free(ganancias);
@@ -234,20 +247,23 @@ int apostador(int dinero, int caballos, int apostadores, int id_cola){
   /*Control de errores*/
   if(caballos < 0 || apostadores < 0) return ERROR;
   mensaje.mtype = 1;
+  syslog(LOG_INFO, "Apostadores mandando mensajes a la cola con id %d", id_cola);
   /*Enviamos un mensaje por cada apostador*/
   for(i = 0; i < apostadores; i++){
     sprintf(mensaje.nombre, "Apostador-%d", i+1);
-    mensaje.apuesta = aleat_num(1, dinero);
+    mensaje.apuesta = aleat_num(100, dinero*100)/100.0;
     mensaje.caballo = aleat_num(0, caballos-1);
+    syslog(LOG_INFO, "%s apuesta %.2lf al caballo %d", mensaje.nombre, mensaje.apuesta, mensaje.caballo);
     if(msgsnd(id_cola, (struct msgbuf *)&mensaje, sizeof(Msg_apuesta) -sizeof(long) -sizeof(int), 0) < 0)return ERROR;
     sleep(1);
   }
-  pthread_exit(NULL);
+  return OK;
 }
 
 /**
 *@brief Funcion encargada de inicializar las variables de la memoria
 * compartida relacionadas con el dinero y de crear las ventanillas
+*@param mask : mascara de señales permitidas
 *@param id_cola : id de la cola de mensajes
 *@param caballos : numero de caballos
 *@param apostadores : numero de apostadores introducido por teclado
@@ -255,15 +271,16 @@ int apostador(int dinero, int caballos, int apostadores, int id_cola){
 *@param id : id de la cola de mensajes
 *@return OK o ERROR
 */
-int gestor(int id_cola, int caballos, int apostadores, int ventanillas, int id){
+int gestor(sigset_t mask, int id_cola, int caballos, int apostadores, int ventanillas, int id){
   pthread_t hilo[ventanillas];
   Hilo_args arg[ventanillas];
   int i;
-
+  /*Control de errores*/
+  if(caballos < 0 || apostadores < 0 || ventanillas < 0) return ERROR;
   /*Cogemos la memoria compartida*/
   Carrera_info *info = shmat(id, (char*)0, 0);
   if(!info) return ERROR;
-
+  syslog(LOG_INFO, "Gestor inicializa la informacion de la memoria compartida %d", id);
   /*Inicializamos las apuestas de los caballos, las cotizacion y el total*/
   info->cont = 0;
   info->total_apuestas = 0;
@@ -272,16 +289,21 @@ int gestor(int id_cola, int caballos, int apostadores, int ventanillas, int id){
     info->total_apuestas += info->total_caballo[i];
     info->cotizacion[i] = info->total_apuestas/info->total_caballo[i];
   }
-
   /*Inicializamos las ventanillas de apuestas*/
   for(i = 0; i < ventanillas; i++) {
     arg[i].id_mem = id;
     arg[i].num_ventana = i;
+    arg[i].id_cola = id_cola;
     pthread_create(&hilo[i], NULL , (void *(*)(void *))ventanilla, &arg[i]);
   }
-  shmdt((char*)info);
-  for(i = 0; i < ventanillas; i++) pthread_join(hilo[i], NULL);
+  syslog(LOG_INFO, "Ventanillas creadas");
+  /*Esperamos a que el padre nos avise para acabar*/
+  sigsuspend(&mask);
 
+  /*Mandamos una señal a los hilos para que acaben y los esperamos*/
+  for(i = 0; i < ventanillas; i++) pthread_kill(hilo[i], SIGTERM);
+  for(i = 0; i < ventanillas; i++) pthread_join(hilo[i], NULL);
+  syslog(LOG_INFO, "Gestor finaliza");
   return OK;
 }
 
@@ -292,33 +314,35 @@ int gestor(int id_cola, int caballos, int apostadores, int ventanillas, int id){
 *@return pthread_exit
 */
 void *ventanilla(Hilo_args *arg){
-  int semid, id_cola, acabado = 0;
+  int id_cola;
   Msg_apuesta mensaje;
   pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
+  /*Control de errores*/
+  if(!arg) pthread_exit(NULL);
   /*Cogemos la memoria compartida*/
   Carrera_info *info = shmat(arg->id_mem, (char*)0, 0);
   if(!info) return NULL;
-  /*Cogemos el semid del semaforo y el id de la cola de mensajes*/
-  semid = info->semid;
-  id_cola = info->id_cola;
+  /*Cogemos el id de la cola de mensajes*/
+  id_cola = arg->id_cola;
   /*Recibimos un mensaje*/
-  while(acabado == 0){
-    if(msgrcv(id_cola, (struct msgbuf *)&mensaje, sizeof(Msg_apuesta) - sizeof(long) - sizeof(int), 1, MSG_NOERROR) < 0) return NULL;
+  while(msgrcv(id_cola, (struct msgbuf *)&mensaje, sizeof(Msg_apuesta) - sizeof(long) - sizeof(int), 1, MSG_NOERROR) > 0){
+    /*Hacemos down del semaforo de hilos*/
     pthread_mutex_lock(&mutex);
-    if(Down_Semaforo(semid, 2, SEM_UNDO) == ERROR) return NULL;
+
     /*Guardamos la cotizacion del caballo antes de apostar y el numero de ventana*/
     mensaje.cotizacion = info->cotizacion[mensaje.caballo];
     mensaje.pago = mensaje.apuesta*info->cotizacion[mensaje.caballo];
     mensaje.ventanilla = arg->num_ventana;
     info->mensaje[info->cont] = mensaje;
 
-    /*Recalculamos el total de apuestas, el pago y las cotizaciones*/
+    /*Recalculamos el total de apuestas y las cotizaciones*/
     info->total_apuestas += mensaje.apuesta;
     info->total_caballo[mensaje.caballo] += mensaje.apuesta;
     info->cotizacion[mensaje.caballo] = info->total_apuestas/info->total_caballo[mensaje.caballo];
     info->cont++;
-    acabado = info->acabado;
-    if(Up_Semaforo(semid, 2, SEM_UNDO) == ERROR) return NULL;
+    syslog(LOG_INFO, "Ventanilla %d : %s %.2lf euros al caballo %d", mensaje.ventanilla+1, mensaje.nombre, mensaje.apuesta, mensaje.caballo+1);
+    /*Hacemos down del semaforo de hilos*/
     pthread_mutex_unlock(&mutex);
   }
   shmdt((char*)info);
@@ -336,6 +360,9 @@ void captura(int sennal){
   int k;
   if(sennal == SIGUSR2){
     exit(EXIT_SUCCESS);
+  }
+  else if(sennal == SIGTERM){
+    pthread_exit(NULL);
   }
   /*En caso de cancelar el programa eliminamos la zona de memoria compartida y los semaforos*/
   else if(sennal == SIGINT){
